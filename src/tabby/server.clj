@@ -17,15 +17,19 @@
 (defn- get-state [state]
   (json/wrap-json-response (response/response @state)))
 
-(defn- valid-term? [state params]
-  (>= (:term params) (get-in @state [:persistent :current-term])))
+(defn- invalid-term? [state params]
+  (>= (:term params) (:current-term @state)))
 
 (defn- request-vote [state params]
-  (if (valid-term? state params)
-    (false)
-    (if-not (get-in @state [:persistent :voted-for])
-      (swap! state update-in [:persistent :voted-for] (:candidate-id params))
-      (false))))
+  (print "[" (:id @state) "] - received request-vote: " params)
+  (if (invalid-term? state params)
+    false
+    (if-not (:voted-for @state)
+      (do
+        (swap! state assoc :voted-for (:candidate-id params))
+        (json/wrap-json-response (response/response {:term (:current-term @state)
+                                                     :vote-granted true})))
+      false)))
 
 (defn- server-routes [state]
   (routes (GET "/:key" {params :params} (get-key state params))
@@ -48,6 +52,15 @@
                             :leader-commit (:commit-index @state)}
               :content-type :json}))
 
+(defn- send-request-vote [state peer]
+  (http/post (str peer "/request_vote")
+             {:form-params {:term (:current-term @state)
+                            :candidate-id (:id @state)
+                            :last-log-index (:commit-index @state)
+                            :last-log-term (get-log-term state)}
+              :content-type :json}))
+
+
 (defn- broadcast-heartbeat [state]
   (doall (pmap heart-beat (:peers state))))
 
@@ -59,7 +72,6 @@
                  (assoc :match-index (map 0 (:peers @state)))))
   (broadcast-heartbeat state))
 
-(defn- send-request-vote [state peer])
 
 (defn- won-election? [state results]
   (> (reduce #(+ %1 (if (:granted %2) 1 0)) results)) (/ (count (:peers @state)) 2))
@@ -67,9 +79,9 @@
 (defn- trigger-election [state]
   (swap! state #(->
                  %1
-                 (update-in [:persistent :current-term] inc)
+                 (assoc :current-term inc)
                  (assoc :type :canditate)
-                 (update-in [:persistent :voted-for] (:id state))))
+                 (assoc :voted-for (:id state))))
   (let [results (pmap (comp send-request-vote state) (:peers @state))]
     (if (won-election? state results)
       (become-leader state))))
@@ -80,23 +92,26 @@
 (defn- election-timeout? [state])
 
 (defn- spawn-election-timeout [state]
-  (future (while true
+  (future (while (:keep-running @state)
             (let [t1 (System/currentTimeMillis)]
               (choose-election-timeout state)
               (Thread/sleep (:election-timeout @state))
               (if (election-timeout? state)
                 (trigger-election state))))))
 
+(defn set-peers [server peers])
+
 (defn create-server [id port]
-  (let [state (atom {:persistent {:current-term 0
-                                  :voted-for nil
-                                  :log []}
-                     :id id
-                     :volatile {:commit-index 0
-                                :last-applied 0}
+  (let [state (atom {:current-term 0 ; persist
+                     :voted-for nil  ; persist
+                     :log []         ; persist
+                     :id id          ; user assigned
+                     :commit-index 0
+                     :last-applied 0
                      :type :follower
                      :election-timeout 0
                      :peers []
+                     :keep-running true
                      :db {}})]
 
     (spawn-election-timeout state)
@@ -105,4 +120,5 @@
      :state state}))
 
 (defn close-server [server]
+  (swap! (:state server) assoc :keep-running false)
   (.stop (:server server)))
