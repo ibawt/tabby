@@ -10,8 +10,18 @@
                   (constantly (for [n (range num)]
                                 (server/create-server n (+ base-port n))))))
 (defn stop-cluster []
-  (doseq [server *cluster*]
-    (server/close-server server)))
+  (doall (doseq [server *cluster*]
+           (print "stopping " (:id server))
+           (server/close-server server))))
+
+(defn start []
+  (create-cluster 3)
+  (for [s *cluster*]
+    (server/set-peers s (map #(:id @(:state %1)) (filter #(not= s %) *cluster*)))))
+
+(defn reset []
+  (stop-cluster)
+  (start))
 
 (defn -main
   "I don't do a whole lot ... yet."
