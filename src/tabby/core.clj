@@ -2,28 +2,23 @@
   (:require [tabby.server :as server])
   (:gen-class))
 
-(def ^:dynamic *cluster* nil)
-(def base-port 3000)
+(def cluster-states (atom nil))
 
-(defn create-cluster [num]
-  (alter-var-root #'*cluster*
-                  (constantly (for [n (range num)]
-                                (server/create-server n (+ base-port n))))))
-(defn stop-cluster []
-  (doall (doseq [server *cluster*]
-           (print "stopping " (:id server))
-           (server/close-server server))))
+(defmacro dbg [& body]
+  `(let [x# ~body]
+     (println (quote body) "=" x#) x#))
 
-(defn start []
-  (create-cluster 3)
-  (for [s *cluster*]
-    (server/set-peers s (map #(:id @(:state %1)) (filter #(not= s %) *cluster*)))))
+(defn create-system [num]
+  (let [servers (into [] (for [n (range num)] (atom (server/create-server n))))]
+    (doall (map (fn [p] (server/set-peers p (filterv #(not= p %1) servers))) servers))
+    {:servers servers :time 0}))
 
-(defn reset []
-  (stop-cluster)
-  (start))
+(defn update-system [system dt]
+  (doseq [s (:servers system)] (server/update s dt))
+  (update-in system [:time] + dt))
 
-(defn -main
-  "I don't do a whole lot ... yet."
-  [& args]
-  (println "Hello, World!"))
+(defn init []
+  (reset! cluster-states (create-system 3)))
+
+(defn step [dt]
+  (swap! cluster-states (fn [s] (update-system s dt))))
