@@ -17,6 +17,9 @@
   (doseq [s (:servers system)] (server/update s dt))
   (update-in system [:time] + dt))
 
+(defn print-fields [sym]
+  (map-indexed #(vector (sym @%2) %1) (:servers @cluster-states)))
+
 (defn init []
   (reset! cluster-states (create-system 3)))
 
