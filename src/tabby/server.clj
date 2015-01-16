@@ -16,6 +16,7 @@
   (if (< (:current-term state) (:term params))
     (-> state
         (assoc :type :follower)
+        (assoc :voted-for nil)
         (assoc :current-term (:term params)))
     state))
 
@@ -45,7 +46,6 @@
            (not (prev-log-term-equals? @state params))) ; step 2
      false ; think should be step 3
      (append-log state params))})
-
 
 (defn- request-vote [state params]
   (let [s (check-term @state params)]
@@ -122,6 +122,7 @@
 (defn check-election-timeout [state]
   (if (election-timeout? state)
     (do
+      (println (:id state) " triggered election")
       (-> state
           (assoc :type :candidate)
           (assoc :voted-for (:id state))
