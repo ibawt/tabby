@@ -131,8 +131,14 @@
           (broadcast-request-vote)))
     state))
 
+(defn- leader-heartbeat [state]
+  (if (= :leader (:type state))
+    (broadcast-heartbeat state)
+    state))
+
 (defn update [state dt]
-  (swap! state #(-> %1
+   (swap! state #(-> %1
+                    (leader-heartbeat)
                     (update-in [:election-timeout] - dt)
                     (apply-commit-index)
                     (check-election-timeout)))
