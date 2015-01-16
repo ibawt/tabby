@@ -17,11 +17,19 @@
   (doseq [s (:servers system)] (server/update s dt))
   (update-in system [:time] + dt))
 
-(defn print-fields [sym]
-  (map-indexed #(vector (sym @%2) %1) (:servers @cluster-states)))
+(defn- servers []
+  (:servers @cluster-states))
+
+(defn- print-fields [& rest]
+  (map #(select-keys @% (reverse rest)) (servers)))
+
+(defn ps []
+  (print-fields :id :type :election-timeout :current-term :commit-index))
 
 (defn init []
-  (reset! cluster-states (create-system 3)))
+  (reset! cluster-states (create-system 3))
+  (ps))
 
 (defn step [dt]
-  (swap! cluster-states (fn [s] (update-system s dt))))
+  (swap! cluster-states (fn [s] (update-system s dt)))
+  (ps))
