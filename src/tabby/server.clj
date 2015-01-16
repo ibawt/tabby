@@ -30,9 +30,10 @@
 
 ; yuck
 (defn- append-log [state params]
-  (swap! state assoc :election-timeout (random-election-timeout) )
-  (swap! state check-term params)
-  (swap! state #(update-in % [:log] conj (:entries params)))
+  (swap! state #(-> %1
+                    (assoc :election-timeout (random-election-timeout))
+                    (check-term params)
+                    (update-in [:log] conj (:entries params))))
   (when (> (:leader-commit params) (:commit-index @state))
     (swap! state assoc :commit-index
            (min (:leader-commit params) (count (:log @state))))))
@@ -76,11 +77,12 @@
                           :leader-commit (:commit-index state)})))
 
 (defn- send-request-vote [state peer]
-  (request-vote peer {:term (:current-term state)
-                      :candidate-id (:id state)
-                      :last-log-index (:commit-index state)
-                      :last-log-term (get-log-term state)}))
-
+  {:dest peer
+   :body {:term (:current-term state)
+          :candidate-id (:id state)
+          :last-log-index (:commit-index state)
+          :last-log-term (get-log-term state)}})
+  ;; (request-vote peer {))
 
 (defn- broadcast-heartbeat [state]
   (doseq [r (map (partial send-heart-beat state) (:peers state))])
@@ -113,11 +115,12 @@
   state)
 
 (defn broadcast-request-vote [state]
-  (let [r (map (partial send-request-vote state) (:peers state))]
-    (if (> (->> (map :vote-granted? r) (filter identity) (count))
-           (/ (count (:peers state)) 2))
-      (become-leader state (map :term r))
-      state)))
+  (assoc state :tx-queue (vec (concat (:tx-queue state) (map (partial send-request-vote state) (:peers state))))))
+  ;; (let [r (map (partial send-request-vote state) (:peers state))]
+  ;;   (if (> (->> (map :vote-granted? r) (filter identity) (count))
+  ;;          (/ (count (:peers state)) 2))
+  ;;     (become-leader state (map :term r))
+  ;;     state)))
 
 (defn check-election-timeout [state]
   (if (election-timeout? state)
@@ -149,6 +152,8 @@
    :voted-for nil  ; persist
    :log [{:term 0 :cmd :init}]         ; persist start at 1
    :id id          ; user assigned
+   :tx-queue []
+   :rx-queue []
    :commit-index 0
    :last-applied 0
    :type :follower
