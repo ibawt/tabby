@@ -115,7 +115,9 @@
   state)
 
 (defn broadcast-request-vote [state]
-  (assoc state :tx-queue (vec (concat (:tx-queue state) (map (partial send-request-vote state) (:peers state))))))
+  ;(update-in state :tx-queue concat (te) (map (partial send-request-vote state) (:peers state))))
+
+  (assoc state :tx-queue (concat (:tx-queue state) (map (partial send-request-vote state) (:peers state)))))
   ;; (let [r (map (partial send-request-vote state) (:peers state))]
   ;;   (if (> (->> (map :vote-granted? r) (filter identity) (count))
   ;;          (/ (count (:peers state)) 2))
