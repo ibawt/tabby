@@ -13,8 +13,21 @@
     {:servers (mapv (fn [p] (server/set-peers p (mapv :id (filterv #(not= p %1) servers)))) servers)
      :time 0}))
 
+(defn server-write [s kv]
+  (loop [servers s
+         out '()]
+    (if (empty? servers)
+      out
+      (if (= :leader (:type (first servers)))
+        (apply conj out (server/write (first servers) kv) (rest servers))
+        (recur (rest servers) (conj out (first servers)))))))
+
+(defn system-write [kv]
+  (swap! cluster-states (fn [cs]
+                          (update-in cs [:servers] server-write kv))))
+
 (defn collect-packets [system id]
-  (flatten (map (fn [s] (filter #(= (:dest %1) id) (:tx-queue s)))
+  (flatten (map (fn [s] (filter #(= (:dst %1) id) (:tx-queue s)))
                 (:servers system))))
 
 (defn collect-rx-packets [system]

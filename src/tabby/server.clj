@@ -6,10 +6,10 @@
 
 (def election-timeout-max 150)
 
-(defn- random-election-timeout []
+(defn random-election-timeout []
   (+ (rand-int election-timeout-max) election-timeout-max))
 
-(defn- check-term
+(defn check-term
   "if supplied term < current term, set current term to term
   and convert to follower"
   [state params]
@@ -20,43 +20,42 @@
         (assoc :current-term (:term params)))
     state))
 
-(defn- invalid-term? [state params]
+(defn invalid-term? [state params]
   (< (:term params) (:current-term state)))
 
-(defn- prev-log-term-equals? [state params]
+(defn prev-log-term-equals? [state params]
   (= (:term (get (:log state)
                  (:prev-log-index params)))
      (:prev-log-term params)))
-
-                                        ; yuck
-(defn- append-log [state params]
+(defn append-log [state params]
   (let [s (-> state
               (assoc :election-timeout (random-election-timeout))
-              (check-term params)
               (update-in [:log] conj (:entries params)))]
     (if (> (:leader-commit params) (:commit-index state))
       (assoc s :commit-index
              (min (:leader-commit params) (count (:log state))))
       s)))
 
-(defn- append-entries [state params]
-  (when-not (= (:leader-id state) (:leader-id params))
-    (swap! state assoc :leader-id (:leader-id params)))
-  {:term (:current-term @state)
-   :success
-   (if (or (invalid-term? @state params) ; step 1
-           (not (prev-log-term-equals? @state params))) ; step 2
-     false ; think should be step 3
-     (append-log state params))})
+(defn append-entries [state params]
+  (let [s (check-term state params)
+        r {:term (:current-term state)
+           :success
+           (if (or (invalid-term? s params) ; step 1
+                   (not (prev-log-term-equals? s params))) ; step 2
+             false ; think should be step 3
+             true)}]
 
-(defn- transmit [state requests]
-  (update-in state [:tx-queue] #(apply conj % (reverse requests))))
+    {:state (if (:success r) (append-log s params) s)
+     :result r}))
 
-(defn- request-vote [state params]
+(defn transmit [state request]
+  (update-in state [:tx-queue] conj request))
+
+(defn request-vote [state params]
   (let [s (check-term state params)
         r {:term (:current-term s)
            :vote-granted?
-           (if (dbg invalid-term? s params)
+           (if (invalid-term? s params)
              false
              (if (and (nil? (:voted-for s)) (prev-log-term-equals? s params))
                true
@@ -64,16 +63,20 @@
     {:response r
      :state (if (:vote-granted? r) (assoc state :voted-for (:candidate-id params)) s)}))
 
-(defn- get-log-index [state]
+(defn write [state kv]
+  state
+  )
+
+(defn get-log-index [state]
   (count (:log state)))
 
-(defn- get-log-term [state]
+(defn get-log-term [state]
   (:term (peek (:log state))))
 
-(defn- make-heart-beat-pkt [state peer]
+(defn make-heart-beat-pkt [state peer]
   (let [p-index (dec (count (:log state)))
         p-term (:term (get (:log state) p-index))]
-    {:dest peer
+    {:dst peer
      :type :append-entries
      :src (:id state)
      :body {:term (:current-term state)
@@ -83,8 +86,8 @@
             :entries []
             :leader-commit (:commit-index state)}}))
 
-(defn- make-request-vote-pkt [state peer]
-  {:dest peer
+(defn make-request-vote-pkt [state peer]
+  {:dst peer
    :src (:id state)
    :type :request-vote
    :body {:term (:current-term state)
@@ -92,16 +95,20 @@
           :last-log-index (:commit-index state)
           :last-log-term (get-log-term state)}})
 
-(defn- broadcast-heartbeat [state]
-                                        ;(doseq [r (map (partial send-heart-beat state) (:peers state))])
-  (transmit state (map (partial make-heart-beat-pkt state) (:peers state))))
+(defn broadcast-heartbeat [state]
+  (loop [s state
+         p (:peers state)]
+    (if (empty? p)
+      s
+      (recur (transmit s (make-heart-beat-pkt s (first p)))
+             (rest p)))))
 
-(defn- trace-s [state]
+(defn trace-s [state]
   (when (= (:id state) 0)
     (println (select-keys state [:id :type :election-timeout :current-term :commit-index] )))
   state)
 
-(defn- become-leader [state]
+(defn become-leader [state]
   (println (:id state) " becoming leader")
   (->
    state
@@ -110,7 +117,7 @@
    (assoc :match-index (vec (repeat (count (:peers state)) 0)))
    (broadcast-heartbeat)))
 
-(defn- election-timeout? [state]
+(defn election-timeout? [state]
   (<= (:election-timeout state) 0))
 
 (defn set-peers [state peers]
@@ -123,7 +130,12 @@
   state)
 
 (defn broadcast-request-vote [state]
-  (transmit state (map (partial make-request-vote-pkt state) (:peers state))))
+  (loop [s state
+         p (:peers state)]
+    (if (empty? p)
+      s
+      (recur (transmit s (make-request-vote-pkt s (first p)))
+             (rest p)))))
 
 (defn check-election-timeout [state]
   (if (election-timeout? state)
@@ -135,49 +147,55 @@
           (update-in [:current-term] inc)
           (assoc :election-timeout (random-election-timeout))
           (broadcast-request-vote)
-          (assoc :votes 1)))
+          (assoc :votes {})))
     state))
 
-(defn- leader-heartbeat [state]
+(defn leader-heartbeat [state]
   (if (= :leader (:type state))
     (broadcast-heartbeat state)
     state))
 
-(defn- handle-request-vote [state p]
+(defn handle-request-vote [state p]
+  "incoming request to for a vote"
   (let [r (request-vote state (:body p))]
-    (transmit (:state r) (conj nil {:dest (:src p)
-                                    :src (:id state)
-                                    :type :request-vote-reply
-                                    :body (:response r)}))))
 
-(defn- handle-request-vote-reply [state p]
-  (if (:vote-granted? (:body p))
-    (let [s (update-in state [:votes] inc)]
-      (if (> (:votes s) (/ (count (:peers s)) 2))
-        (become-leader s))))
-  state)
+    (transmit (:state r)  {:dst (:src p)
+                           :src (:id state)
+                           :type :request-vote-reply
+                           :body (:response r)})))
 
-(defn- handle-append-entries [state p]
-  state)
+(defn handle-request-vote-response [state p]
+  "response to a request to vote"
+  (let [s (update-in state [:votes] (fn [votes] (assoc votes (:src p) (:vote-granted? (:body p)))))
+        c (count (filter identity (vals (:votes s))))]
+    (if (> c (/ (count (:peers s)) 2))
+      (become-leader s)
+      s)))
 
-(defn- handle-append-entries-reply [state p]
+(defn handle-append-entries [state p]
+  (let [r (append-entries state (:body p))]
+    (transmit (:state r) {:dst (:src p) :src (:id state)
+                          :type :append-entries-response
+                          :body (:result r)})
+    (:state r)))
+
+(defn handle-append-entries-response [state p]
   state)
 
 (defn handle-packet [state]
   (let [p (first (:rx-queue state))]
     (condp = (:type p)
       :request-vote (handle-request-vote state p)
-      :request-vote-reply (handle-request-vote-reply state p)
+      :request-vote-reply (handle-request-vote-response state p)
       :append-entries (handle-append-entries state p)
-      :append-entries-reply (handle-append-entries-reply state p))))
+      :append-entries-reply (handle-append-entries-response state p))))
 
 (defn process-rx-packets [state]
   (loop [s state]
-    (if (empty? (:rx-queue s))
-      s
-      (recur (-> s
-                 (handle-packet)
-                 (update-in [:rx-queue] rest))))))
+    (if (empty? (:rx-queue s)) s
+        (recur (-> s
+                   (handle-packet)
+                   (update-in [:rx-queue] rest))))))
 
 (defn update [state dt]
   (-> state
