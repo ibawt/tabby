@@ -64,8 +64,7 @@
      :state (if (:vote-granted? r) (assoc state :voted-for (:candidate-id params)) s)}))
 
 (defn write [state kv]
-  state
-  )
+  state)
 
 (defn get-log-index [state]
   (count (:log state)))
@@ -215,6 +214,6 @@
    :commit-index 0
    :last-applied 0
    :type :follower
-   :election-timeout id;(random-election-timeout)
+   :election-timeout (random-election-timeout)
    :peers []
    :db {}})

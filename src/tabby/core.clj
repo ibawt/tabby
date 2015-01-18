@@ -9,7 +9,7 @@
      (println (quote ~body) "=" x#) x#))
 
 (defn create-system [num]
-  (let [servers (into [] (for [n (range num)] (server/create-server n)))]
+  (let [servers (vec (for [n (range num)] (server/create-server n)))]
     {:servers (mapv (fn [p] (server/set-peers p (mapv :id (filterv #(not= p %1) servers)))) servers)
      :time 0}))
 
@@ -51,7 +51,18 @@
                  (fn [servers] (mapv #(server/update % dt) servers)))
       (update-in [:time] + dt)))
 
-(defn- servers []
+(defn srv [id]
+  (get (:servers @cluster-states) id))
+
+(defn update-in-srv [id field f & args]
+  (swap! cluster-states (fn [c]
+                          (assoc c :servers (assoc (:servers c) id (update-in (srv id) [field] #(apply f % args)))))))
+
+(defn update-srv [src id]
+  (swap! cluster-states (fn [cs]
+                          (assoc cs :servers (assoc (:servers cs) id src)))))
+
+(defn servers []
   (:servers @cluster-states))
 
 (defn queue-for [id]
