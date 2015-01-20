@@ -27,10 +27,16 @@
   (= (:term (get (:log state)
                  (:prev-log-index params)))
      (:prev-log-term params)))
+
+(defn- apply-log [state entries]
+  (if (> (count entries) 0)
+    (update-in state [:log] #(apply conj % entries))
+    state))
+
 (defn append-log [state params]
   (let [s (-> state
               (assoc :election-timeout (random-election-timeout))
-              (update-in [:log] conj (:entries params)))]
+              (apply-log (:entries params)))]
     (if (> (:leader-commit params) (:commit-index state))
       (assoc s :commit-index
              (min (:leader-commit params) (count (:log state))))
@@ -63,8 +69,49 @@
     {:response r
      :state (if (:vote-granted? r) (assoc state :voted-for (:candidate-id params)) s)}))
 
+(defn make-heart-beat-pkt [state peer]
+  (let [p-index (count (:log state))
+        p-term (:term (get (:log state) p-index))]
+    {:dst peer
+     :type :append-entries
+     :src (:id state)
+     :body {:term (:current-term state)
+            :leader-id (:id state)
+            :prev-log-index p-index
+            :prev-log-term p-term
+            :entries []
+            :leader-commit (:commit-index state)}}))
+
+(defn make-append-log-pkt [state peer]
+  (let [p-index (- (get (:next-index state) peer) 1)
+        p-term (:term (get (:log state) p-index))]
+    {:dst peer
+     :type :append-entries
+     :src (:id state)
+     :body {:term (:current-term state)
+            :leader-id (:id state)
+            :prev-log-index p-index
+            :prev-log-term p-term
+            :entries [(get (:log state) (inc p-index))]
+            :leader-commit (:commit-index state)}}))
+
+(defn foreach-peer [state f & args]
+  "calls f with current state, the peer and etc."
+  (loop [s state
+         p (:peers state)]
+    (if (empty? p)
+      s
+      (recur (apply f s (first p) args)
+             (rest p)))))
+
+(defn broadcast-append-log [state]
+  (foreach-peer state #(transmit % (make-append-log-pkt %1 %2))))
+
 (defn write [state kv]
-  state)
+  (->
+   state
+   (update-in [:log]  conj {:term (:current-term state) :cmd kv})
+   (broadcast-append-log)))
 
 (defn get-log-index [state]
   (count (:log state)))
@@ -73,7 +120,7 @@
   (:term (peek (:log state))))
 
 (defn make-heart-beat-pkt [state peer]
-  (let [p-index (dec (count (:log state)))
+  (let [p-index (count (:log state))
         p-term (:term (get (:log state) p-index))]
     {:dst peer
      :type :append-entries
@@ -95,12 +142,7 @@
           :last-log-term (get-log-term state)}})
 
 (defn broadcast-heartbeat [state]
-  (loop [s state
-         p (:peers state)]
-    (if (empty? p)
-      s
-      (recur (transmit s (make-heart-beat-pkt s (first p)))
-             (rest p)))))
+  (foreach-peer state #(transmit %1 (make-heart-beat-pkt %1 %2))))
 
 (defn trace-s [state]
   (when (= (:id state) 0)
@@ -112,8 +154,8 @@
   (->
    state
    (assoc :type :leader)
-   (assoc :next-index (vec (repeat (count (:peers state)) (:last-applied state))))
-   (assoc :match-index (vec (repeat (count (:peers state)) 0)))
+   (assoc :next-index (reduce #(merge %1 {%2 (count (:log state))}) {} (:peers state)))
+   (assoc :match-index (reduce #(merge %1 {%2 0}) {} (:peers state)))
    (broadcast-heartbeat)))
 
 (defn election-timeout? [state]
@@ -129,12 +171,7 @@
   state)
 
 (defn broadcast-request-vote [state]
-  (loop [s state
-         p (:peers state)]
-    (if (empty? p)
-      s
-      (recur (transmit s (make-request-vote-pkt s (first p)))
-             (rest p)))))
+  (foreach-peer state #(transmit %1 (make-request-vote-pkt %1 %2))))
 
 (defn check-election-timeout [state]
   (if (election-timeout? state)
@@ -150,22 +187,23 @@
     state))
 
 (defn leader-heartbeat [state]
-  (if (= :leader (:type state))
+  (if (and (= :leader (:type state))
+           (> (count (:rx-queue state)) 0))
     (broadcast-heartbeat state)
     state))
 
 (defn handle-request-vote [state p]
   "incoming request to for a vote"
-  (let [r (request-vote state (:body p))]
-
-    (transmit (:state r)  {:dst (:src p)
-                           :src (:id state)
-                           :type :request-vote-reply
-                           :body (:response r)})))
+  (let [{s :state r :response} (request-vote state (:body p))]
+    (transmit s  {:dst (:src p)
+                  :src (:id state)
+                  :type :request-vote-reply
+                  :body r})))
 
 (defn handle-request-vote-response [state p]
   "response to a request to vote"
-  (let [s (update-in state [:votes] (fn [votes] (assoc votes (:src p) (:vote-granted? (:body p)))))
+  (let [s (update-in state [:votes]
+                     (fn [votes] (assoc votes (:src p) (:vote-granted? (:body p)))))
         c (count (filter identity (vals (:votes s))))]
     (if (> c (/ (count (:peers s)) 2))
       (become-leader s)
@@ -174,12 +212,26 @@
 (defn handle-append-entries [state p]
   (let [r (append-entries state (:body p))]
     (transmit (:state r) {:dst (:src p) :src (:id state)
-                          :type :append-entries-response
-                          :body (:result r)})
-    (:state r)))
+                              :type :append-entries-response
+                              :body (:result r)})))
+
+(defn- update-match-and-next [state p]
+  (let [s (if-not (:success (:body p))
+            (update-in state [:next-index (:src p)] dec)
+            state)]
+    (assoc-in s [:match-index (:src p)] (get (:next-index state) (:src p)))))
+
+(defn check-commit-index [state]
+  (let [f (frequencies (vals (:match-index state)))
+        [index c] (first f)]
+    (if (and (> c (/ (count (:peers state)) 2)) (>= index (:commit-index state)))
+      (assoc-in state [:commit-index] index)
+      state)))
 
 (defn handle-append-entries-response [state p]
-  state)
+  (-> state
+      (update-match-and-next p)
+      (check-commit-index)))
 
 (defn handle-packet [state]
   (let [p (first (:rx-queue state))]
@@ -187,7 +239,8 @@
       :request-vote (handle-request-vote state p)
       :request-vote-reply (handle-request-vote-response state p)
       :append-entries (handle-append-entries state p)
-      :append-entries-reply (handle-append-entries-response state p))))
+      :append-entries-response (handle-append-entries-response state p)
+      (println "ag"))))
 
 (defn process-rx-packets [state]
   (loop [s state]
@@ -207,7 +260,7 @@
 (defn create-server [id]
   {:current-term 0 ; persist
    :voted-for nil  ; persist
-   :log [{:term 0 :cmd :init}]         ; persist start at 1
+   :log [{:term 0 :cmd :init}]
    :id id          ; user assigned
    :tx-queue '()
    :rx-queue '()

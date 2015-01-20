@@ -15,12 +15,15 @@
 
 (defn server-write [s kv]
   (loop [servers s
-         out '()]
+         out '[]]
     (if (empty? servers)
       out
       (if (= :leader (:type (first servers)))
         (apply conj out (server/write (first servers) kv) (rest servers))
         (recur (rest servers) (conj out (first servers)))))))
+
+(defn servers []
+  (:servers @cluster-states))
 
 (defn system-write [kv]
   (swap! cluster-states (fn [cs]
@@ -52,7 +55,7 @@
       (update-in [:time] + dt)))
 
 (defn srv [id]
-  (get (:servers @cluster-states) id))
+  (first (filter #(= (:id %) id) (servers))))
 
 (defn update-in-srv [id field f & args]
   (swap! cluster-states (fn [c]
@@ -61,9 +64,6 @@
 (defn update-srv [src id]
   (swap! cluster-states (fn [cs]
                           (assoc cs :servers (assoc (:servers cs) id src)))))
-
-(defn servers []
-  (:servers @cluster-states))
 
 (defn queue-for [id]
   (select-keys (get (servers) id) [:tx-queue :rx-queue]))
@@ -81,3 +81,12 @@
 (defn step [dt]
   (swap! cluster-states (fn [s] (update-system s dt)))
   (ps))
+
+(defn t []
+  (init)
+  (update-in-srv 0 :election-timeout (constantly 0))
+  (step 0)
+  (step 0)
+  (step 0)
+  (step 0)
+  (system-write "a"))
