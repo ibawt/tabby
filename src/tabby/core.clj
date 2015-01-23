@@ -3,6 +3,7 @@
   (:gen-class))
 
 (def cluster-states (atom nil))
+(def packet-loss (atom {}))
 
 (defmacro dbg [& body]
   `(let [x# ~body]
@@ -10,7 +11,8 @@
 
 (defn create-system [num]
   (let [servers (vec (for [n (range num)] (server/create-server n)))]
-    {:servers (mapv (fn [p] (server/set-peers p (mapv :id (filterv #(not= p %1) servers)))) servers)
+    {:servers (mapv (fn [p] (server/set-peers
+                             p (mapv :id (filterv #(not= p %1) servers)))) servers)
      :time 0}))
 
 (defn server-write [s kv]
@@ -22,6 +24,9 @@
         (apply conj out (server/write (first servers) kv) (rest servers))
         (recur (rest servers) (conj out (first servers)))))))
 
+(defn add-packet-loss [from-id to-id]
+  (swap! packet-loss update-in [from-id to-id] (constantly true)))
+
 (defn servers []
   (:servers @cluster-states))
 
@@ -29,13 +34,19 @@
   (swap! cluster-states (fn [cs]
                           (update-in cs [:servers] server-write kv))))
 
+(defn- valid-packet-for[id p]
+  (and (= (:dst p) id) ; if it's for me
+       (not (get (get @packet-loss id) (:src p)))))
+
 (defn collect-packets [system id]
   (flatten (map (fn [s] (filter #(= (:dst %1) id) (:tx-queue s)))
                 (:servers system))))
 
 (defn collect-rx-packets [system]
   (assoc system :servers (map (fn [server]
-                                (assoc server :rx-queue (concat (:rx-queue server) (collect-packets system (:id server)))))
+                                (assoc server :rx-queue
+                                       (concat (:rx-queue server)
+                                               (collect-packets system (:id server)))))
                               (:servers system))))
 
 (defn clear-tx-packets [system]
@@ -89,4 +100,4 @@
   (step 0)
   (step 0)
   (step 0)
-  (system-write "a"))
+  (system-write {:a "a"}))

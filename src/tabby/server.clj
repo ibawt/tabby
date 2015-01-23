@@ -110,7 +110,7 @@
 (defn write [state kv]
   (->
    state
-   (update-in [:log]  conj {:term (:current-term state) :cmd kv})
+   (update-in [:log] conj {:term (:current-term state) :cmd kv})
    (broadcast-append-log)))
 
 (defn get-log-index [state]
@@ -164,11 +164,19 @@
 (defn set-peers [state peers]
   (assoc state :peers peers))
 
+(defn apply-entry [{log :log index :last-applied} db]
+  (let [cmd (:cmd (get log index))]
+    (if (= :init cmd)
+      {}
+      (merge db cmd))))
+
 (defn apply-commit-index [state]
-  (when (> (:commit-index state) (:last-applied state))
-    ; TODO: actually do the operation in the log
-    (update-in state [:last-applied] inc))
-  state)
+  (if (>= (:commit-index state) (:last-applied state))
+    (->
+     state
+     (update-in [:last-applied] inc)
+     (update-in [:db] (partial apply-entry state)))
+    state))
 
 (defn broadcast-request-vote [state]
   (foreach-peer state #(transmit %1 (make-request-vote-pkt %1 %2))))
@@ -225,7 +233,7 @@
   (let [f (frequencies (vals (:match-index state)))
         [index c] (first f)]
     (if (and (> c (/ (count (:peers state)) 2)) (>= index (:commit-index state)))
-      (assoc-in state [:commit-index] index)
+      (assoc state :commit-index index)
       state)))
 
 (defn handle-append-entries-response [state p]
