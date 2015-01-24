@@ -39,7 +39,7 @@
        (not (get (get @packet-loss id) (:src p)))))
 
 (defn collect-packets [system id]
-  (flatten (map (fn [s] (filter #(= (:dst %1) id) (:tx-queue s)))
+  (flatten (map (fn [s] (filter (partial valid-packet-for id) (:tx-queue s)))
                 (:servers system))))
 
 (defn collect-rx-packets [system]
@@ -87,6 +87,7 @@
 
 (defn init []
   (reset! cluster-states (create-system 3))
+  (update-in-srv 0 :election-timeout (constantly 0))
   (ps))
 
 (defn step [dt]

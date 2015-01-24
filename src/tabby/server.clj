@@ -67,7 +67,7 @@
                true
                false))}]
     {:response r
-     :state (if (:vote-granted? r) (assoc state :voted-for (:candidate-id params)) s)}))
+     :state (if (:vote-granted? r) (assoc s :voted-for (:candidate-id params)) s)}))
 
 (defn make-heart-beat-pkt [state peer]
   (let [p-index (count (:log state))
@@ -195,8 +195,10 @@
     state))
 
 (defn leader-heartbeat [state]
+
   (if (and (= :leader (:type state))
-           (> (count (:rx-queue state)) 0))
+           (= (count (:tx-queue state)) 0)
+           (= (count (:rx-queue state)) 0))
     (broadcast-heartbeat state)
     state))
 
