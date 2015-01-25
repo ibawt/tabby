@@ -98,18 +98,29 @@
   (is (= '(1 1 1) (map :commit-index (servers)))))
 
 (deftest test-election-responses
-  (testing "election with one server not respond"
+  (testing "election with one server not responding"
     (init)
     (add-packet-loss 1 0)
     (step 0)
     (step 0)
     (step 0)
     (is (= '(:leader :follower :follower) (map :type (servers)))))
-  (testing "election with two servers not respond"
+  (testing "election with two servers not responding, (election should fail)"
     (init)
     (add-packet-loss 1 0)
     (add-packet-loss 2 0)
     (step 0)
     (step 0)
     (step 0)
-    (is (= '(:candidate :follower :follower) (map :type (servers))))))
+    (is (= '(:candidate :follower :follower) (map :type (servers)))))
+  (testing "election requests from out of date caniditate"
+    ;; we should detect that the client term is greater than ours
+    ;; convert to follower and increment current-term
+    (init)
+    (update-in-srv 1 :current-term (constantly 2))
+    (update-in-srv 2 :current-term (constantly 2))
+    (step 0)
+    (step 0)
+    (step 0)
+    (is (= '(:follower :follower :follower) (map :type (servers))))
+    (is (= 2 (:current-term (srv 0))))))

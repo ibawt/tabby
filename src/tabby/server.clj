@@ -40,22 +40,21 @@
       s)))
 
 (defn append-entries [state params]
-  (let [s (check-term state params)
-        r {:term (:current-term state)
+  (let [r {:term (:current-term state)
            :success
-           (if (or (invalid-term? s params) ; step 1
-                   (not (prev-log-term-equals? s params))) ; step 2
+           (if (or (invalid-term? state params) ; step 1
+                   (not (prev-log-term-equals? state params))) ; step 2
              false ; think should be step 3
              true)}]
 
-    {:state (if (:success r) (append-log s params) s)
+    {:state (if (:success r) (append-log state params) state)
      :result r}))
 
 (defn transmit [state request]
   (update-in state [:tx-queue] conj request))
 
 (defn request-vote [state params]
-  (let [s (check-term state params)
+  (let [s state
         r {:term (:current-term s)
            :vote-granted?
            (if (invalid-term? s params)
@@ -241,12 +240,13 @@
       (check-commit-index)))
 
 (defn handle-packet [state]
-  (let [p (first (:rx-queue state))]
+  (let [p (first (:rx-queue state))
+        s (check-term state (:body p))]
     (condp = (:type p)
-      :request-vote (handle-request-vote state p)
-      :request-vote-reply (handle-request-vote-response state p)
-      :append-entries (handle-append-entries state p)
-      :append-entries-response (handle-append-entries-response state p))))
+      :request-vote (handle-request-vote s p)
+      :request-vote-reply (handle-request-vote-response s p)
+      :append-entries (handle-append-entries s p)
+      :append-entries-response (handle-append-entries-response s p))))
 
 (defn process-rx-packets [state]
   (loop [s state]

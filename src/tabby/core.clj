@@ -91,7 +91,8 @@
   (update-in-srv 0 :election-timeout (constantly 0))
   (ps))
 
-(defn step [dt]
+(defn step
+  [dt]
   (swap! cluster-states (fn [s] (update-system s dt)))
   (ps))
 
