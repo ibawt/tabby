@@ -86,6 +86,7 @@
   (print-fields :id :type :election-timeout :current-term :commit-index))
 
 (defn init []
+  (reset! packet-loss {})
   (reset! cluster-states (create-system 3))
   (update-in-srv 0 :election-timeout (constantly 0))
   (ps))

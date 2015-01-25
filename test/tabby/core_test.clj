@@ -2,11 +2,20 @@
   (:require [clojure.test :refer :all]
             [tabby.core :refer :all]))
 
-(deftest test-all-the-things
+(defn create-and-elect []
   (init)
+  (update-in 0 :election-timeout (constantly 0))
+  (step 0)
+  (step 0)
+  (step 0)
+  (step 0))
+
+(deftest test-all-the-things
   (testing "everyone's type"
+    (init)
     (is (= '(:follower :follower :follower) (map :type (:servers @cluster-states)))))
   (testing "first election"
+    (init)
     (update-in-srv 0 :election-timeout (constantly 0))
     (step 0)
     (is (= :candidate (:type (srv 0))))
@@ -23,7 +32,7 @@
     (is (= '(:leader :follower :follower) (map :type (servers))))
     (is (= '(1 1 1) (map :current-term (servers)))))
 
-  (testing "commit-index will updated when consesus is made"
+  (testing "commit-index will updated when consesus is made ( full write )"
     (init)
     (update-in-srv 0 :election-timeout (constantly 0))
     (is (= '(0 0 0) (map :commit-index (servers))))
@@ -47,15 +56,15 @@
               :body {:term 1 :vote-granted? true}}) (:tx-queue (srv 2))))
     (step 0) ; process request-vote become leader, send heart beat
     (is (= '(:leader :follower :follower) (map :type (servers))))
-    (is (= '({:dst 2 :type :append-entries :src 0
+    (is (= '({:dst 1 :type :append-entries :src 0
               :body {:term 1 :leader-id 0
                      :prev-log-index 1 :prev-log-term nil
                      :entries [] :leader-commit 0}}
-             {:dst 1 :type :append-entries :src 0
+             {:dst 2 :type :append-entries :src 0
               :body {:term 1 :leader-id 0
                      :prev-log-index 1 :prev-log-term nil
                      :entries [] :leader-commit 0}})
-           (:tx-queue (srv 0))))
+           (sort-by :dst (:tx-queue (srv 0)))))
     (is (= {2 0 1 0} (:match-index (srv 0))))
     (is (= {2 1 1 1} (:next-index (srv 0))))
     (step 0) ; get heart beat commits
@@ -63,9 +72,9 @@
               :body {:term 1 :success true}}) (:tx-queue (srv 1))))
     (is (= '({:dst 0 :src 2 :type :append-entries-response
               :body {:term 1 :success true}}) (:tx-queue (srv 2))))
-
     (step 0) ; proccess heart beat response
     (is (= {2 1 1 1} (:match-index (srv 0))))
+
     (step 0)
     (system-write {:a "a"}) ; broadcast write packets
 
@@ -84,5 +93,23 @@
                      :entries [{:term 1 :cmd {:a "a"}}]
                      :leader-commit 1}})
            (:tx-queue (srv 0))))
+
+    (step 0))
+  (is (= '(1 1 1) (map :commit-index (servers)))))
+
+(deftest test-election-responses
+  (testing "election with one server not respond"
+    (init)
+    (add-packet-loss 1 0)
     (step 0)
-    (is (= '(1 1 1) (map :commit-index (servers))))))
+    (step 0)
+    (step 0)
+    (is (= '(:leader :follower :follower) (map :type (servers)))))
+  (testing "election with two servers not respond"
+    (init)
+    (add-packet-loss 1 0)
+    (add-packet-loss 2 0)
+    (step 0)
+    (step 0)
+    (step 0)
+    (is (= '(:candidate :follower :follower) (map :type (servers))))))

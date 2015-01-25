@@ -1,8 +1,5 @@
-(ns tabby.server)
-
-(defmacro dbg [& body]
-  `(let [x# ~body]
-     (println (quote ~body) "=" x#) x#))
+(ns tabby.server
+  (:require [tabby.utils :as u]))
 
 (def election-timeout-max 150)
 
@@ -142,6 +139,7 @@
           :last-log-term (get-log-term state)}})
 
 (defn broadcast-heartbeat [state]
+  (println "broadcast")
   (foreach-peer state #(transmit %1 (make-heart-beat-pkt %1 %2))))
 
 (defn trace-s [state]
@@ -150,7 +148,6 @@
   state)
 
 (defn become-leader [state]
-  (println (:id state) " becoming leader")
   (->
    state
    (assoc :type :leader)
@@ -183,23 +180,21 @@
 
 (defn check-election-timeout [state]
   (if (election-timeout? state)
-    (do
-      (println (:id state) " triggered election")
-      (-> state
-          (assoc :type :candidate)
-          (assoc :voted-for (:id state))
-          (update-in [:current-term] inc)
-          (assoc :election-timeout (random-election-timeout))
-          (broadcast-request-vote)
-          (assoc :votes {})))
+    (-> state
+        (assoc :type :candidate)
+        (assoc :voted-for (:id state))
+        (update-in [:current-term] inc)
+        (assoc :election-timeout (random-election-timeout))
+        (broadcast-request-vote)
+        (assoc :votes {(:id state) true}))
     state))
 
 (defn leader-heartbeat [state]
-
   (if (and (= :leader (:type state))
            (= (count (:tx-queue state)) 0)
-           (= (count (:rx-queue state)) 0))
-    (broadcast-heartbeat state)
+           (= (count (:rx-queue state)) 0)
+           (< (:election-timeout state) election-timeout-max))
+    (do (println "leader sending heartbeat") (broadcast-heartbeat state))
     state))
 
 (defn handle-request-vote [state p]
@@ -212,12 +207,14 @@
 
 (defn handle-request-vote-response [state p]
   "response to a request to vote"
-  (let [s (update-in state [:votes]
-                     (fn [votes] (assoc votes (:src p) (:vote-granted? (:body p)))))
-        c (count (filter identity (vals (:votes s))))]
-    (if (> c (/ (count (:peers s)) 2))
-      (become-leader s)
-      s)))
+  (if (not= :candidate (:type state))
+    state
+    (let [s (update-in state [:votes]
+                       (fn [votes] (assoc votes (:src p) (:vote-granted? (:body p)))))
+          c (count (filter identity (vals (:votes s))))]
+      (if (> c (/ (inc (count (:peers s))) 2))
+        (become-leader s)
+        s))))
 
 (defn handle-append-entries [state p]
   (let [r (append-entries state (:body p))]
@@ -249,8 +246,7 @@
       :request-vote (handle-request-vote state p)
       :request-vote-reply (handle-request-vote-response state p)
       :append-entries (handle-append-entries state p)
-      :append-entries-response (handle-append-entries-response state p)
-      (println "ag"))))
+      :append-entries-response (handle-append-entries-response state p))))
 
 (defn process-rx-packets [state]
   (loop [s state]
@@ -261,22 +257,27 @@
 
 (defn update [state dt]
   (-> state
-      (leader-heartbeat)
       (update-in [:election-timeout] - dt)
       (apply-commit-index)
       (check-election-timeout)
-      (process-rx-packets)))
+      (process-rx-packets)
+      (leader-heartbeat)))
+
+(defrecord Server
+    [current-term voted-for log id tx-queue rx-queue
+     commit-index last-applied type election-timeout peers db])
 
 (defn create-server [id]
-  {:current-term 0 ; persist
-   :voted-for nil  ; persist
-   :log [{:term 0 :cmd :init}]
-   :id id          ; user assigned
-   :tx-queue '()
-   :rx-queue '()
-   :commit-index 0
-   :last-applied 0
-   :type :follower
-   :election-timeout (random-election-timeout)
-   :peers []
-   :db {}})
+  (map->Server
+   {:current-term 0 ; persist
+    :voted-for nil  ; persist
+    :log [{:term 0 :cmd :init}]
+    :id id          ; user assigned
+    :tx-queue '()
+    :rx-queue '()
+    :commit-index 0
+    :last-applied 0
+    :type :follower
+    :election-timeout (random-election-timeout)
+    :peers []
+    :db {}}))
