@@ -1,13 +1,10 @@
 (ns tabby.core
-  (:require [tabby.server :as server])
+  (:require [tabby.server :as server]
+            [tabby.utils :as u])
   (:gen-class))
 
 (def cluster-states (atom nil))
 (def packet-loss (atom {}))
-
-(defmacro dbg [& body]
-  `(let [x# ~body]
-     (println (quote ~body) "=" x#) x#))
 
 (defn create-system [num]
   (let [servers (vec (for [n (range num)] (server/create-server n)))]
@@ -70,7 +67,10 @@
 
 (defn update-in-srv [id field f & args]
   (swap! cluster-states (fn [c]
-                          (assoc c :servers (assoc (:servers c) id (update-in (srv id) [field] #(apply f % args)))))))
+                          (assoc c :servers
+                                 (assoc (:servers c) id
+                                        (update-in (srv id) [field]
+                                                   #(apply f % args)))))))
 
 (defn update-srv [src id]
   (swap! cluster-states (fn [cs]
@@ -96,11 +96,17 @@
   (swap! cluster-states (fn [s] (update-system s dt)))
   (ps))
 
-(defn t []
+(defn until-empty []
+  (loop []
+    (println "step...")
+    (step 0)
+    (when (> (reduce + (map server/packet-count (servers))) 0)
+      (recur))))
+
+(defn init-to-stable []
   (init)
-  (update-in-srv 0 :election-timeout (constantly 0))
-  (step 0)
-  (step 0)
-  (step 0)
-  (step 0)
+  (until-empty))
+
+(defn t []
+  (init-to-stable)
   (system-write {:a "a"}))
