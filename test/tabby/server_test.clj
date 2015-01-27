@@ -7,7 +7,7 @@
     (let [s (create-server 42)]
       (is (= 0 (:current-term s)))
       (is (= nil (:voted-for s)))
-      (is (= [{:term 0 :cmd :init}] (:log s)))
+      (is (= [] (:log s)))
       (is (= 0 (:commit-index s)))
       (is (= 42 (:id s)))
       (is (= 0 (:last-applied s)))

@@ -4,7 +4,6 @@
 (def election-timeout-max 150)
 
 ;;; Utility Functions
-
 (defn packet-count
   "returns the number of packets
    in the rx and tx queue"
@@ -50,11 +49,13 @@
 (defn invalid-term? [state params]
   (< (:term params) (:current-term state)))
 
-(defn prev-log-term-equals? [state params]
-  (if (= 0 (params :prev-log-index) (last-log-index state))
-    true
-    (= (get-log-term state (:prev-log-index params))
-       (:prev-log-term params))))
+(defn- valid-term? [{c-t :current-term} {term :term}]
+  (>= term c-t))
+
+(defn prev-log-term-equals?
+  [state {p-index :prev-log-index p-term :prev-log-term}]
+  (or (= 0 p-index (last-log-index state))
+      (= (get-log-term state p-index) p-term)))
 
 (defn- apply-log [state entries]
   (if (> (count entries) 0)
@@ -76,9 +77,10 @@
            :count (count (:entries params)) ; this should be replaced with the actual number
            :success
            (if (or (invalid-term? state params) ; step 1
-                   (not (u/dbg prev-log-term-equals? state params))) ; step 2
+                   (not (prev-log-term-equals? state params))) ; step 2
              false ; think should be step 3
-             true)}]
+             true)
+           }]
 
     {:state (if (:success r) (append-log state params) state)
      :result r}))
@@ -89,10 +91,9 @@
 (defn request-vote [state params]
   (let [r {:term (:current-term state)
            :vote-granted?
-           (if (invalid-term? state params)
-             false
-             (and (nil? (:voted-for state))
-                  (prev-log-term-equals? state params)))}]
+           (and (valid-term? state params)
+                (nil? (:voted-for state))
+                (prev-log-term-equals? state params))}]
     {:response r
      :state (if (:vote-granted? r)
               (assoc state :voted-for (:candidate-id params))
