@@ -109,4 +109,7 @@
 
 (defn t []
   (init-to-stable)
-  (system-write {:a "a"}))
+  (system-write {:a "a"})
+  (until-empty)
+  (update-in-srv 0 :election-timeout (constantly 300))
+  (until-empty))

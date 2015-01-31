@@ -3,6 +3,15 @@
 
 (def election-timeout-max 150)
 
+(defn leader? [state]
+  (= :leader (:type state)))
+
+(defn follower? [state]
+  (= :follower (:type state)))
+
+(defn candidate? [state]
+  (= :candidate (:type state)))
+
 ;;; Utility Functions
 (defn packet-count
   "returns the number of packets
@@ -14,6 +23,9 @@
   "returns election-timeout-max + rand(0, election-timeout-max)"
   []
   (+ (rand-int election-timeout-max) election-timeout-max))
+
+(defn- quorum? [state c]
+  (>= c (inc (/ (count (:peers state)) 2))))
 
 ;;; Log functions
 (defn last-log-index
@@ -58,7 +70,7 @@
       (= (get-log-term state p-index) p-term)))
 
 (defn- apply-log [state entries]
-  (if (> (count entries) 0)
+  (if (pos? (count entries))
     (update-in state [:log] #(apply conj % entries))
     state))
 
@@ -66,22 +78,17 @@
   (let [s (-> state
               (assoc :election-timeout (random-election-timeout))
               (apply-log (:entries params)))]
-    (if (u/dbg > (:leader-commit params) (:commit-index state))
+    (if (> (:leader-commit params) (:commit-index state))
       (assoc s :commit-index
-             (u/dbg min (:leader-commit params) (count (:log state))))
+             (min (:leader-commit params) (count (:log state))))
       s)))
 
 ;;; TODO: refactor this shit show
 (defn append-entries [state params]
   (let [r {:term (:current-term state)
            :count (count (:entries params)) ; this should be replaced with the actual number
-           :success
-           (if (or (invalid-term? state params) ; step 1
-                   (not (prev-log-term-equals? state params))) ; step 2
-             false ; think should be step 3
-             true)
-           }]
-
+           :success (and (valid-term? state params)
+                         (prev-log-term-equals? state params))}]
     {:state (if (:success r) (append-log state params) state)
      :result r}))
 
@@ -189,16 +196,16 @@
 
 (defn apply-entry [{log :log index :last-applied} db]
   (let [cmd (:cmd (get log index))]
-    (if (= :init cmd)
-      {}
-      (merge db cmd))))
+    (merge db cmd)))
 
 (defn apply-commit-index [state]
   (if (> (:commit-index state) (:last-applied state))
-    (->
-     state
-     (update-in [:last-applied] inc)
-     (update-in [:db] (partial apply-entry state)))
+    (do
+      (println "wtf")
+      (->
+         state
+         (update-in [:last-applied] inc)
+         (update-in [:db] (partial apply-entry state))))
     state))
 
 (defn broadcast-request-vote [state]
@@ -217,15 +224,15 @@
 
 (defn leader-heartbeat [state]
   (if (and (= :leader (:type state))
-           (= (count (:tx-queue state)) 0)
-           (= (count (:rx-queue state)) 0)
-           (< (:election-timeout state) election-timeout-max))
+           (zero? (packet-count state))
+           (zero? (mod (:election-timeout state) 10)))
     (assoc (broadcast-heartbeat state)
            :election-timeout (random-election-timeout))
     state))
 
-(defn handle-request-vote [state p]
+(defn handle-request-vote
   "incoming request to for a vote"
+  [state p]
   (let [{s :state r :response} (request-vote state (:body p))]
     (transmit s  {:dst (:src p)
                   :src (:id state)
@@ -241,7 +248,7 @@
                        (fn [votes] (assoc votes (:src p)
                                           (:vote-granted? (:body p)))))
           c (count (filter identity (vals (:votes s))))]
-      (if (> c (/ (inc (count (:peers s))) 2))
+      (if (quorum? s c)
         (become-leader s)
         s))))
 
@@ -258,14 +265,14 @@
     (assoc-in s [:match-index (:src p)] (get (:next-index state) (:src p)))))
 
 (defn check-commit-index [state]
-  (let [f (u/dbg frequencies (vals (:match-index state)))
+  (let [f (frequencies (vals (:match-index state)))
         [index c] (first f)]
-    (if (and (> c (/ (count (:peers state)) 2)) (> index (:commit-index state)))
+    (if (and (quorum? state (inc c)) (> index (:commit-index state)))
       (assoc state :commit-index index)
       state)))
 
 (defn handle-append-entries-response [state p]
-  (if (> (-> p :body :count) 0) ; heart beat response
+  (if (pos? (-> p :body :count)) ; heart beat response
     (-> state
         (update-match-and-next p)
         (check-commit-index))
@@ -287,29 +294,33 @@
                    (handle-packet)
                    (update-in [:rx-queue] rest))))))
 
+(defn check-backlog [state]
+  (if (and (leader? state) (zero? (mod (:election-timeout state) 10)))
+    (loop [s state
+           p (filter #(< (val %1) (:commit-index state)) (:match-index state))]
+      (if (empty? p) s
+          (recur (transmit s (make-append-log-pkt s (ffirst p)))
+                 (rest p))))
+    state))
+
 (defn update [state dt]
   (-> state
-      (update-in [:election-timeout] - dt)
+      (update-in  [:election-timeout] - dt)
       (apply-commit-index)
       (check-election-timeout)
       (process-rx-packets)
+      (check-backlog)
       (leader-heartbeat)))
 
-(defrecord Server
-    [current-term voted-for log id tx-queue rx-queue
-     commit-index last-applied type election-timeout peers db
-     match-index next-index votes])
-
 (defn create-server [id]
-  (map->Server
-   {:current-term 0 ; persist
-    :log []
-    :id id          ; user assigned
-    :tx-queue '()
-    :rx-queue '()
-    :commit-index 0
-    :last-applied 0
-    :type :follower
-    :election-timeout (random-election-timeout)
-    :peers []
-    :db {}}))
+  {:current-term 0 ; persist
+   :log []
+   :id id          ; user assigned
+   :tx-queue '()
+   :rx-queue '()
+   :commit-index 0
+   :last-applied 0
+   :type :follower
+   :election-timeout (random-election-timeout)
+   :peers []
+   :db {}})

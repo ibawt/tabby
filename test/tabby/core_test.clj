@@ -76,10 +76,8 @@
               :body {:term 1 :success true :count 0}}) (:tx-queue (srv 2))))
     (step 0) ; proccess heart beat response
     (is (= {2 0 1 0} (:match-index (srv 0))))
-
-    (step 0)
+    (until-empty)
     (system-write {:a "a"}) ; broadcast write packets
-
     (is (= '({:dst 2 :src 0
               :type :append-entries
               :body {:term 1 :leader-id 0
@@ -95,10 +93,10 @@
                      :entries [{:term 1 :cmd {:a "a"}}]
                      :leader-commit 0}})
            (:tx-queue (srv 0))))
-
-    (step 0)
-    (step 150)
-    (step 0)
+    (until-empty)
+    (update-in-srv 0 :election-timeout (constantly 300))
+    (step 10)
+    (until-empty)
     (is (= '(1 1 1) (map :commit-index (servers))))))
 
 (deftest test-election-responses
@@ -129,10 +127,23 @@
     (is (= '(:follower :follower :follower) (map :type (servers))))
     (is (= 2 (:current-term (srv 0))))))
 
+(deftest test-log-propagtion
+  (testing "log prop"
+    (t)
+    (is (= '(1 1 1) (map :commit-index (servers))))))
+
 (deftest test-log-catch-up
   (testing "log catchup"
     (init)
     (until-empty)
     (add-packet-loss 1 0)
     (system-write {:a "a"})
-    (until-empty)))
+    (step 150)
+    (until-empty)
+    (is (= 1 (:commit-index (srv 0))))
+    (clear-packet-loss)
+    (step 10)
+    (step 10)
+    (until-empty)
+    (is (= 1 (:commit-index (srv 1))))
+    (is (= {:a "a"} (:db (srv 1))))))
