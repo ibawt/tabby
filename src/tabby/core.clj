@@ -24,6 +24,9 @@
 (defn add-packet-loss [from-id to-id]
   (swap! packet-loss update-in [from-id to-id] (constantly true)))
 
+(defn clear-packet-loss []
+  (reset! packet-loss {}))
+
 (defn servers []
   (:servers @cluster-states))
 
@@ -109,7 +112,8 @@
 
 (defn t []
   (init-to-stable)
+  (add-packet-loss 1 0)
   (system-write {:a "a"})
   (until-empty)
   (update-in-srv 0 :election-timeout (constantly 300))
-  (until-empty))
+  (step 10))

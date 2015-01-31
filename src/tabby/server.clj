@@ -200,12 +200,10 @@
 
 (defn apply-commit-index [state]
   (if (> (:commit-index state) (:last-applied state))
-    (do
-      (println "wtf")
-      (->
-         state
-         (update-in [:last-applied] inc)
-         (update-in [:db] (partial apply-entry state))))
+    (->
+     state
+     (update-in [:last-applied] inc)
+     (update-in [:db] (partial apply-entry state)))
     state))
 
 (defn broadcast-request-vote [state]
@@ -296,11 +294,11 @@
 
 (defn check-backlog [state]
   (if (and (leader? state) (zero? (mod (:election-timeout state) 10)))
-    (loop [s state
-           p (filter #(< (val %1) (:commit-index state)) (:match-index state))]
-      (if (empty? p) s
-          (recur (transmit s (make-append-log-pkt s (ffirst p)))
-                 (rest p))))
+    (assoc (foreach-peer state (fn [s p]
+                                  (transmit s (if (> (:commit-index s) (get (:match-index s) p))
+                                                (make-append-log-pkt s p)
+                                                (make-heart-beat-pkt s p)))))
+           :election-timeout (random-election-timeout))
     state))
 
 (defn update [state dt]

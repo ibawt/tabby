@@ -127,23 +127,23 @@
     (is (= '(:follower :follower :follower) (map :type (servers))))
     (is (= 2 (:current-term (srv 0))))))
 
-(deftest test-log-propagtion
-  (testing "log prop"
-    (t)
-    (is (= '(1 1 1) (map :commit-index (servers))))))
-
 (deftest test-log-catch-up
   (testing "log catchup"
     (init)
     (until-empty)
     (add-packet-loss 1 0)
     (system-write {:a "a"})
-    (step 150)
-    (until-empty)
-    (is (= 1 (:commit-index (srv 0))))
+    (step 0)
+    (step 0)
+    (is (= '(1 0 1) (map #(count (:log %)) (servers))))
+    (update-in-srv 0 :election-timeout (constantly 300))
+    (step 10)
+    (step 0)
+    (is (= '(1 0 1) (map :commit-index (servers))))
     (clear-packet-loss)
+    (update-in-srv 0 :election-timeout (constantly 300))
     (step 10)
-    (step 10)
-    (until-empty)
-    (is (= 1 (:commit-index (srv 1))))
-    (is (= {:a "a"} (:db (srv 1))))))
+    (step 0)
+    (step 0)
+    (is (= '(1 1 1) (map :commit-index (servers))))
+    (is (= '({:a "a"} {:a "a"} {:a "a"}) (map :db (servers))))))
