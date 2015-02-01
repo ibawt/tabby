@@ -6,6 +6,11 @@
 (defn election-timeout? [state]
   (<= (:election-timeout state) 0))
 
+(defn become-follower [state]
+  (-> state
+      (assoc :type :follower)
+      (assoc :voted-for nil)))
+
 (defn request-vote [state params]
   (let [r {:term (:current-term state)
            :vote-granted?

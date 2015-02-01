@@ -3,8 +3,7 @@
             [tabby.utils :refer :all]))
 
 (defn- heart-beat-timeout []
-  (+ 1 (rand-int 9)))
-
+  (inc (rand-int 9)))
 
 (defn make-append-log-pkt [state peer]
   (let [p-index (dec (get (:next-index state) peer))

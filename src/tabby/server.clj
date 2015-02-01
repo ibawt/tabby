@@ -27,21 +27,12 @@
   [state params]
   (if (< (:current-term state) (:term params))
     (-> state
-        (assoc :type :follower)
-        (assoc :voted-for nil)
-        (assoc :current-term (:term params)))
+     (assoc :current-term (:term params))
+     (become-follower))
     state))
 
 (defn invalid-term? [state params]
   (< (:term params) (:current-term state)))
-
-
-
-(defn trace-s [state]
-  (when (= (:id state) 0)
-    (println (select-keys state [:id :type :election-timeout
-                                 :current-term :commit-index])))
-  state)
 
 (defn set-peers [state peers]
   (assoc state :peers peers))

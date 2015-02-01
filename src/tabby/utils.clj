@@ -4,6 +4,11 @@
   `(let [x# ~body]
      (println (quote ~body) "=" x#) x#))
 
+(defn trace-s [state]
+  (println (select-keys state [:id :type :election-timeout
+                               :current-term :commit-index]))
+  state)
+
 (def election-timeout-max 150)
 
 (defn valid-term? [{c-t :current-term} {term :term}]
