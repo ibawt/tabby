@@ -24,6 +24,9 @@
   []
   (+ (rand-int election-timeout-max) election-timeout-max))
 
+(defn- heart-beat-timeout []
+  (+ 1 (rand-int 9)))
+
 (defn- quorum? [state c]
   (>= c (inc (/ (count (:peers state)) 2))))
 
@@ -183,6 +186,7 @@
   (->
    state
    (assoc :type :leader)
+   (assoc :next-timeout (reduce #(merge %1 {%2 (heart-beat-timeout)}) (:peers state)))
    (assoc :next-index (reduce #(merge %1 {%2 (inc (count (:log state)))}) {}
                               (:peers state)))
    (assoc :match-index (reduce #(merge %1 {%2 0}) {} (:peers state)))
@@ -291,6 +295,9 @@
         (recur (-> s
                    (handle-packet)
                    (update-in [:rx-queue] rest))))))
+
+(defn- peer-timeout? [state peer]
+  (<= (get (:next-timeout state) peer) 0))
 
 (defn check-backlog [state]
   (if (and (leader? state) (zero? (mod (:election-timeout state) 10)))
