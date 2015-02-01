@@ -23,6 +23,12 @@
     (is (= :follower (:type (srv 2))))
     (is (> (:election-timeout (srv 0)) 0)))
 
+  (testing "simple write"
+    (init-to-stable)
+    (system-write {:a "a"})
+    (until-empty)
+    (step 10))
+
   (testing "1 - 2 vote"
     (init)
     (update-in-srv 0 :election-timeout (constantly 0))

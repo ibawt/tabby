@@ -22,7 +22,7 @@
     (if (empty? servers)
       out
       (if (= :leader (:type (first servers)))
-        (apply conj out (server/write (first servers) kv) (rest servers))
+        (apply conj out (server/handle-write (first servers) kv) (rest servers))
         (recur (rest servers) (conj out (first servers)))))))
 
 (defn add-packet-loss [from-id to-id]
