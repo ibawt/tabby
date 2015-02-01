@@ -186,7 +186,7 @@
   (->
    state
    (assoc :type :leader)
-   (assoc :next-timeout (reduce #(merge %1 {%2 (heart-beat-timeout)}) (:peers state)))
+   (assoc :next-timeout (reduce #(merge %1 {%2 (heart-beat-timeout)}) {} (:peers state)))
    (assoc :next-index (reduce #(merge %1 {%2 (inc (count (:log state)))}) {}
                               (:peers state)))
    (assoc :match-index (reduce #(merge %1 {%2 0}) {} (:peers state)))
@@ -222,14 +222,6 @@
         (assoc :election-timeout (random-election-timeout))
         (broadcast-request-vote)
         (assoc :votes {(:id state) true}))
-    state))
-
-(defn leader-heartbeat [state]
-  (if (and (= :leader (:type state))
-           (zero? (packet-count state))
-           (zero? (mod (:election-timeout state) 10)))
-    (assoc (broadcast-heartbeat state)
-           :election-timeout (random-election-timeout))
     state))
 
 (defn handle-request-vote
@@ -299,23 +291,37 @@
 (defn- peer-timeout? [state peer]
   (<= (get (:next-timeout state) peer) 0))
 
-(defn check-backlog [state]
-  (if (and (leader? state) (zero? (mod (:election-timeout state) 10)))
-    (assoc (foreach-peer state (fn [s p]
-                                  (transmit s (if (> (:commit-index s) (get (:match-index s) p))
-                                                (make-append-log-pkt s p)
-                                                (make-heart-beat-pkt s p)))))
-           :election-timeout (random-election-timeout))
+(defn- apply-peer-timeouts [state dt]
+  (update-in state [:next-timeout]
+             (fn [timeouts]
+               (reduce-kv #(assoc %1 %2 (- %3 dt)) {} timeouts))))
+
+(defn- update-peer-timeout [state peer]
+  (update-in state [:next-timeout peer] + 10))
+
+(defn send-peer-update [state peer]
+  (transmit state (if (> (:commit-index state) (get (:match-index state) peer))
+                      (make-append-log-pkt state peer)
+                      (make-heart-beat-pkt state peer))))
+
+(defn check-backlog [state dt]
+  (if (leader? state)
+    (foreach-peer (apply-peer-timeouts state dt)
+                  (fn [s p]
+                    (if (peer-timeout? s p)
+                      (-> s
+                          (send-peer-update p)
+                          (update-peer-timeout p))
+                      s)))
     state))
 
 (defn update [state dt]
   (-> state
-      (update-in  [:election-timeout] - dt)
+      (update-in [:election-timeout] - dt)
       (apply-commit-index)
       (check-election-timeout)
       (process-rx-packets)
-      (check-backlog)
-      (leader-heartbeat)))
+      (check-backlog dt)))
 
 (defn create-server [id]
   {:current-term 0 ; persist

@@ -127,9 +127,6 @@
     (is (= '(:follower :follower :follower) (map :type (servers))))
     (is (= 2 (:current-term (srv 0))))))
 
-(defn- force-heartbeat []
-  (update-in-srv 0 :election-timeout (constantly 300)))
-
 (deftest test-log-catch-up
   (testing "log catchup"
     (init)
@@ -139,16 +136,13 @@
     (step 0)
     (step 0)
     (is (= '(1 0 1) (map #(count (:log %)) (servers))))
-    (update-in-srv 0 :election-timeout (constantly 300))
     (step 10)
     (step 0)
     (is (= '(1 0 1) (map :commit-index (servers))))
     (clear-packet-loss)
-    (update-in-srv 0 :election-timeout (constantly 300))
     (step 10)
     (step 0)
     (step 0)
-    (update-in-srv 0 :election-timeout (constantly 300))
     (step 10)
     (step 0)
     (step 0)

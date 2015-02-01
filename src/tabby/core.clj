@@ -5,6 +5,10 @@
 
 (def cluster-states (atom nil))
 (def packet-loss (atom {}))
+(defmacro rev [fun & args]
+  (cons fun (reverse args)))
+(defmacro ignore [x]
+  nil)
 
 (defn create-system [num]
   (let [servers (vec (for [n (range num)] (server/create-server n)))]
