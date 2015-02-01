@@ -2,6 +2,7 @@
   (:require [tabby.server :as server]
             [tabby.utils :as u]))
 
+;; TODO: remove these things into some testing and dev deps
 (def cluster-states (atom nil))
 
 (def packet-loss (atom {}))

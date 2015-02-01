@@ -16,7 +16,7 @@
         (become-leader s)
         s))))
 
-(defn make-request-vote-pkt [state peer]
+(defn- make-request-vote-pkt [state peer]
   {:dst peer
    :src (:id state)
    :type :request-vote
@@ -25,8 +25,10 @@
           :prev-log-index (count (:log state))
           :prev-log-term (get-log-term state (last-log-index state))}})
 
-(defn broadcast-request-vote [state]
-  (foreach-peer state #(transmit %1 (make-request-vote-pkt %1 %2))))
+(defn- broadcast-request-vote [state]
+  (foreach-peer state
+                (fn [s p]
+                  (transmit s (make-request-vote-pkt s p)))))
 
 (defn become-candidate [state]
   (-> state

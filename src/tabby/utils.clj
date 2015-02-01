@@ -32,3 +32,18 @@
 
 (defn quorum? [state c]
   (>= c (inc (/ (count (:peers state)) 2))))
+
+(defn leader? [state]
+  (= :leader (:type state)))
+
+(defn follower? [state]
+  (= :follower (:type state)))
+
+(defn candidate? [state]
+  (= :candidate (:type state)))
+
+(defn if-leader? [state f & args]
+  (if (leader? state) (apply f state args) state))
+
+(defn if-follower? [state f & args]
+  (if (follower? state) (apply f state args) state))
