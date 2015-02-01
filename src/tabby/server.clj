@@ -71,7 +71,7 @@
   (-> state
       (update-in [:election-timeout] - dt)
       (apply-commit-index)
-      (if-follower? check-election-timeout)
+      (check-election-timeout)
       (process-rx-packets)
       (if-leader? check-backlog dt)))
 
@@ -84,9 +84,9 @@
     (redirect-to-leader state)))
 
 (defn create-server [id]
-  {:current-term 0 ; persist
+  {:current-term 0
    :log []
-   :id id          ; user assigned
+   :id id
    :tx-queue '()
    :rx-queue '()
    :commit-index 0

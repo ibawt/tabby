@@ -9,4 +9,5 @@
                 *print-level* 10}
   :main ^:skip-aot tabby.core
   :target-path "target/%s"
-  :profiles {:uberjar {:aot :all}})
+  :profiles {:uberjar {:dev {:source-paths ["dev"]}
+                       :aot :all}})

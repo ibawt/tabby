@@ -1,14 +1,10 @@
 (ns tabby.core
   (:require [tabby.server :as server]
-            [tabby.utils :as u])
-  (:gen-class))
+            [tabby.utils :as u]))
 
 (def cluster-states (atom nil))
+
 (def packet-loss (atom {}))
-(defmacro rev [fun & args]
-  (cons fun (reverse args)))
-(defmacro ignore [x]
-  nil)
 
 (defn create-system [num]
   (let [servers (vec (for [n (range num)] (server/create-server n)))]
@@ -105,7 +101,6 @@
 
 (defn until-empty []
   (loop []
-    (println "step...")
     (step 0)
     (when (> (reduce + (map server/packet-count (servers))) 0)
       (recur))))

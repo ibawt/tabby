@@ -35,7 +35,6 @@
   (foreach-peer state #(transmit %1 (make-heart-beat-pkt %1 %2))))
 
 (defn- peer-timeout? [state peer]
-  (println state peer)
   (<= (get (:next-timeout state) peer) 0))
 
 (defn- apply-peer-timeouts [state dt]
