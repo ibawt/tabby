@@ -26,6 +26,5 @@
       (is (= 1 (:current-term s))))
     (testing "election-timeout gets reset"
       (is (pos? (:election-timeout s))))
-    (testing "request-vote rpcs will be queued"
-      )
+    (testing "request-vote rpcs will be queued")
     ))
