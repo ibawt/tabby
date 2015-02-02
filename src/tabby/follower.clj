@@ -17,7 +17,6 @@
               (assoc state :voted-for (:candidate-id params))
               state)}))
 
-
 ;;; TODO: refactor this shit show
 (defn- append-entries [state params]
   (let [r {:term (:current-term state)

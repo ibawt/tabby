@@ -49,7 +49,6 @@
 (defn- redirect-to-leader [state]
   state)
 
-
 (defn update [state dt]
   (-> state
       (update-in [:election-timeout] - dt)

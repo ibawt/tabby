@@ -84,7 +84,6 @@
         (check-commit-index))
     state))
 
-
 (defn write [state kv]
   (->
    state
