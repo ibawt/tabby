@@ -3,19 +3,6 @@
             [tabby.leader :refer :all]
             [tabby.log :refer :all]))
 
-(defn handle-request-vote-response
-  "response to a request to vote"
-  [state p]
-  (if (not= :candidate (:type state))
-    state
-    (let [s (update-in state [:votes]
-                       (fn [votes] (assoc votes (:src p)
-                                          (:vote-granted? (:body p)))))
-          c (count (filter identity (vals (:votes s))))]
-      (if (quorum? s c)
-        (become-leader s)
-        s))))
-
 (defn- make-request-vote-pkt [state peer]
   {:dst peer
    :src (:id state)
@@ -38,3 +25,17 @@
       (assoc :election-timeout (random-election-timeout))
       (broadcast-request-vote)
       (assoc :votes {(:id state) true})))
+
+(defn handle-request-vote-response
+  "response to a request to vote"
+  [state p]
+  (if (not= :candidate (:type state))
+    state
+    (let [s (update-in state [:votes]
+                       (fn [votes]
+                         (assoc votes (:src p)
+                                          (:vote-granted? (:body p)))))
+          c (count (filter identity (vals (:votes s))))]
+      (if (quorum? s c)
+        (become-leader s)
+        s))))
