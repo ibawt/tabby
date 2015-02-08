@@ -40,10 +40,10 @@
     (let [s1 (step 0 (test-cluster 3))] ; step 1 become candidate & send request-vote
       (is (= '(:candidate :follower :follower) (fields-by-id s1 :type)))
       (is (= '(1 0 0) (fields-by-id s1 :current-term)))
-      (is (= '({:dst 2 :src 0 :type :request-vote
+      (is (= '({:dst 1 :src 0 :type :request-vote
                 :body {:term 1 :candidate-id 0, :prev-log-index 0
                        :prev-log-term 0}}
-               {:dst 1 :src 0 :type :request-vote
+               {:dst 2 :src 0 :type :request-vote
                 :body {:term 1 :candidate-id 0, :prev-log-index 0
                        :prev-log-term 0}}) (:tx-queue (get (:servers s1) 0))))))
   (testing "step 2 - peers respond to request vote"
@@ -80,34 +80,34 @@
     (let [s (->> (test-cluster 3)
                  (step-times 0 4))]
       (is (= '({:dst 0 :src 1 :type :append-entries-response
-                :body {:term 1 :success true :count 0}}) (:tx-queue (srv 1))))
+                :body {:term 1 :success true :count 0}}) (:tx-queue (srv s 1))))
       (is (= '({:dst 0 :src 2 :type :append-entries-response
-                :body {:term 1 :success true :count 0}}) (:tx-queue (srv 2))))))
+                :body {:term 1 :success true :count 0}}) (:tx-queue (srv s 2))))))
   (testing "step 5 - heart beat response"
     (let [s (->> (test-cluster 3)
                  (step-times 0 5))]
-      (is (= {2 0 1 0} (:match-index (srv 0))))))
+      (is (= {2 0 1 0} (:match-index (srv s 0))))))
 
   (testing "step 6 - system write"
     (let [s (->> (test-cluster 3)
                  (until-empty)
                  (write {:a "a"}))]
 
-      (is (= '({:dst 2 :src 0
+      (is (= '({:dst 1 :src 0
                 :type :append-entries
                 :body {:term 1 :leader-id 0
                        :prev-log-index 0
                        :prev-log-term 0
                        :entries [{:term 1 :cmd {:a "a"}}]
                        :leader-commit 0}}
-               {:dst 1 :src 0
+               {:dst 2 :src 0
                 :type :append-entries
                 :body {:term 1 :leader-id 0
                        :prev-log-index 0
                        :prev-log-term 0
                        :entries [{:term 1 :cmd {:a "a"}}]
                        :leader-commit 0}})
-             (:tx-queue (srv 0))))))
+             (:tx-queue (srv s 0))))))
 
   (testing "step 7 wait for commit index"
     (let [s (->> (test-cluster 3)
