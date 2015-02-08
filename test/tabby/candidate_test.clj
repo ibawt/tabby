@@ -15,6 +15,17 @@
    :current-term 0,
    :log []})
 
+(defn- make-state [n]
+  (-> state
+      (become-candidate)
+      (assoc :peers (range 1 n))
+      (assoc :tx-queue '())))
+
+(defn- send-rvp-resp [state from-id granted?]
+  (handle-request-vote-response state
+                                {:src from-id :dst 0 :type :request-vote-reply
+                                 :body {:vote-granted? granted? :term 1}}))
+
 (deftest test-become-candidate
   (let [s (become-candidate state)]
     (testing "type should be candidate"
@@ -33,17 +44,6 @@
                {:dst 1 :src 0 :type :request-vote
                 :body {:term 1 :candidate-id 0, :prev-log-index 0
                        :prev-log-term 0}}) (:tx-queue s))))))
-
-(defn make-state [n]
-  (-> state
-      (become-candidate)
-      (assoc :peers (range 1 n))
-      (assoc :tx-queue '())))
-
-(defn send-rvp-resp [state from-id granted?]
-  (handle-request-vote-response state
-                                {:src from-id :dst 0 :type :request-vote-reply
-                                 :body {:vote-granted? granted? :term 1}}))
 
 (deftest test-handle-request-vote-response
   (testing "should ignore if not a candidate"

@@ -9,6 +9,9 @@
                                :current-term :commit-index]))
   state)
 
+(defn mapf [m f & args]
+  (into {} (for [[k v] m] [k (apply f v args)])))
+
 (def election-timeout-max 150)
 
 (defn valid-term? [{c-t :current-term} {term :term}]

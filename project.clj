@@ -7,7 +7,9 @@
                  [org.clojure/core.async "0.1.346.0-17112a-alpha"]]
   :global-vars {*print-length* 4096
                 *print-level* 10}
+  :repl-options {:init-ns user}
   :main ^:skip-aot tabby.core
   :target-path "target/%s"
-  :profiles {:uberjar {:dev {:source-paths ["dev"]}
-                       :aot :all}})
+  :profiles {:uberjar {:aot :all}
+             :dev {:source-paths ["dev"]
+                   :dependencies [[org.clojure/tools.namespace "0.2.9"]]}})

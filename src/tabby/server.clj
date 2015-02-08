@@ -49,7 +49,7 @@
 (defn- redirect-to-leader [state]
   state)
 
-(defn update [state dt]
+(defn update [dt state]
   (-> state
       (update-in [:election-timeout] - dt)
       (apply-commit-index)
