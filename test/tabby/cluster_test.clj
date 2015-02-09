@@ -142,24 +142,26 @@
       (is (= '(:follower :follower :follower) (fields-by-id s :type)))
       (is (= 2 (get-in s [:servers 0 :current-term]))))))
 
-;; (deftest test-log-catch-up
-;;   (testing "log catchup"
-;;     (init)
-;;     (until-empty)
-;;     (add-packet-loss 1 0)
-;;     (system-write {:a "a"})
-;;     (step 0)
-;;     (step 0)
-;;     (is (= '(1 0 1) (map #(count (:log %)) (servers))))
-;;     (step 10)
-;;     (step 0)
-;;     (is (= '(1 0 1) (map :commit-index (servers))))
-;;     (clear-packet-loss)
-;;     (step 10)
-;;     (step 0)
-;;     (step 0)
-;;     (step 10)
-;;     (step 0)
-;;     (step 0)
-;;     (is (= '(1 1 1) (map :commit-index (servers))))
-;;     (is (= '({:a "a"} {:a "a"} {:a "a"}) (map :db (servers))))))
+(deftest test-log-catch-up
+  (testing "log is missing 1"
+    (let [s (->> (test-cluster 3)
+                 (until-empty)
+                 (add-packet-loss 1 0)
+                 (write {:a "a"})
+                 (step-times 0 2)
+                 (step 10)
+                 (step 0))]
+      (is (= '(1 0 1) (map count (fields-by-id s :log))))
+      (is (= '(1 0 1) (fields-by-id s :commit-index)))
+
+      (let [s1 (->> s
+                    (clear-packet-loss)
+                    (step 10)
+                    (step 0)
+                    (step 0)
+                    (step 10)
+                    (step 0)
+                    (step 0))]
+
+        (is (= '(1 1 1) (fields-by-id s1 :commit-index)))
+        (is (= '({:a "a"} {:a "a"} {:a "a"}) (fields-by-id s :db)))))))
