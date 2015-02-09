@@ -20,6 +20,9 @@
 (defn srv [id]
   (get (:servers cluster) id))
 
+(defn update-cluster [f]
+  (alter-var-root #'cluster f))
+
 (defn ps []
   (cl/ps cluster))
 

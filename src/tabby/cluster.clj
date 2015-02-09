@@ -19,16 +19,19 @@
   (let [[id leader] (first (filter (fn [[k v]] (= :leader (:type v))) (:servers cluster)))]
     (update-in cluster [:servers id] (fn [s] (server/handle-write s k)))))
 
-(defn add-packet-loss [cluster from to])
+(defn add-packet-loss [from to cluster]
+  (update-in cluster [:pkt-loss from to] (constantly true)))
 
-(defn clear-packet-loss [cluster])
+(defn clear-packet-loss [cluster]
+  (assoc cluster :pkt-loss {}))
 
-(defn valid-packet-for [id p]
-  (= id (:dst p)))
+(defn valid-packet-for [cluster id p]
+  (and (= id (:dst p))
+       (not (get (get (:pkt-loss cluster) (:src p)) id))))
 
 (defn collect-packets [cluster id]
   (flatten (map (fn [[k s]]
-                  (filter (partial valid-packet-for id) (:tx-queue s))) (:servers cluster))))
+                  (filter (partial valid-packet-for cluster id) (:tx-queue s))) (:servers cluster))))
 
 (defn collect-rx-packets [system]
   (update-in system [:servers] mapf
