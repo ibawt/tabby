@@ -27,7 +27,7 @@
 
 (defn valid-packet-for [cluster id p]
   (and (= id (:dst p))
-       (not (get (get (:pkt-loss cluster) (:src p)) id))))
+       (not (get-in cluster [:pkt-loss (:src p) (:dst p)]))))
 
 (defn collect-packets [cluster id]
   (flatten (map (fn [[k s]]
@@ -75,7 +75,7 @@
   (select-keys (get (:servers cluster) id) [:tx-queue :rx-queue]))
 
 (defn print-fields [cluster & rest]
-  (map #(select-keys % (reverse rest)) (:servers cluster)))
+  (mapf (:servers cluster) #(select-keys % (reverse rest))))
 
 (defn ps [cluster]
   (print-fields cluster :id :type :election-timeout :current-term :commit-index))

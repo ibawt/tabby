@@ -121,7 +121,7 @@
 (deftest test-election-responses
   (testing "election with one server not responding"
     (let [s (->> (test-cluster 3)
-                 (add-packet-loss 1 0)
+                 (add-packet-loss 0 1)
                  (step-times 0 3))]
       (is (= '(:leader :follower :follower) (fields-by-id s :type)))))
 
@@ -146,7 +146,7 @@
   (testing "log is missing 1"
     (let [s (->> (test-cluster 3)
                  (until-empty)
-                 (add-packet-loss 1 0)
+                 (add-packet-loss 0 1)
                  (write {:a "a"})
                  (step-times 0 2)
                  (step 10)

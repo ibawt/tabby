@@ -26,6 +26,22 @@
 (defn ps []
   (cl/ps cluster))
 
+(defn test-cluster [n]
+  (-> (cl/create n)
+      (assoc-in [:servers 0 :election-timeout] 0)))
+
+(defn t []
+  (alter-var-root #'cluster (fn [x] (->> (test-cluster 3)
+                                         (cl/until-empty)
+                                         (cl/add-packet-loss 0 1)
+                                         (cl/write {:a "a"})
+
+                                        (cl/step-times 0 2)
+                                        (cl/step 10)
+                                        (cl/step 0)
+                                         )
+                              )))
+
 (defn servers []
   (:servers cluster))
 

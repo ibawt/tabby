@@ -61,7 +61,7 @@
     (assoc-in s [:match-index (:src p)] (get (:next-index state) (:src p)))))
 
 (defn- check-commit-index [state]
-  (let [f (frequencies (vals (:match-index state)))
+  (let [f (reverse (frequencies (vals (:match-index state))))
         [index c] (first f)]
     (if (and (quorum? state (inc c)) (> index (:commit-index state)))
       (assoc state :commit-index index)
