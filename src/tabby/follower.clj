@@ -49,7 +49,6 @@
   (let [r (append-entries state (:body p))]
     (transmit (:state r) {:dst (:src p) :src (:id state)
                           :type :append-entries-response
-
                           :body (:result r)})))
 
 (defn become-follower

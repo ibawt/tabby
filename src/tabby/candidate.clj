@@ -31,10 +31,7 @@
   [state p]
   (if (not= :candidate (:type state))
     state
-    (let [s (update-in state [:votes]
-                       (fn [votes]
-                         (assoc votes (:src p)
-                                          (:vote-granted? (:body p)))))
+    (let [s (assoc-in state [:votes (:src p)] (:vote-granted? (:body p)))
           c (count (filter identity (vals (:votes s))))]
       (if (quorum? s c)
         (become-leader s)

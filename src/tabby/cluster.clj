@@ -39,9 +39,7 @@
                (update-in v [:rx-queue] concat (collect-packets system (:id v))))))
 
 (defn clear-tx-packets [system]
-  (update-in system [:servers] mapf
-             (fn [v]
-               (assoc v :tx-queue '()))))
+  (update-in system [:servers] mapf assoc :tx-queue '()))
 
 (defn pump-transmit-queues [system]
   (-> system

@@ -32,15 +32,13 @@
             :leader-commit (:commit-index state)}}))
 
 (defn- broadcast-heartbeat [state]
-  (foreach-peer state #(transmit %1 (make-heart-beat-pkt %1 %2))))
+  (foreach-peer state (comp transmit make-heart-beat-pkt)))
 
 (defn- peer-timeout? [state peer]
   (<= (get (:next-timeout state) peer) 0))
 
 (defn- apply-peer-timeouts [state dt]
-  (update-in state [:next-timeout]
-             (fn [timeouts]
-               (reduce-kv #(assoc %1 %2 (- %3 dt)) {} timeouts))))
+  (update-in state [:next-timeout] mapf - dt))
 
 (defn- update-peer-timeout [state peer]
   (update-in state [:next-timeout peer] + 10))
@@ -50,9 +48,8 @@
                     (make-append-log-pkt state peer)
                     (make-heart-beat-pkt state peer))))
 
-
 (defn- broadcast-heart-beat [state]
-  (foreach-peer state (fn [s p] (send-peer-update s p))))
+  (foreach-peer state send-peer-update))
 
 (defn- update-match-and-next [state p]
   (let [s (if-not (:success (:body p))
@@ -61,24 +58,28 @@
     (assoc-in s [:match-index (:src p)] (get (:next-index state) (:src p)))))
 
 (defn- check-commit-index [state]
+  ;;; TODO: revisit this as I bet it's wrong
   (let [f (reverse (frequencies (vals (:match-index state))))
         [index c] (first f)]
     (if (and (quorum? state (inc c)) (> index (:commit-index state)))
       (assoc state :commit-index index)
       state)))
 
+(defn- make-peer-map [state f]
+  (into {} (for [p (:peers state)]
+             [p (f)])))
+
 (defn become-leader [state]
   (->
    state
    (assoc :type :leader)
-   (assoc :next-timeout (reduce #(merge %1 {%2 (heart-beat-timeout)}) {} (:peers state)))
-   (assoc :next-index (reduce #(merge %1 {%2 (inc (count (:log state)))}) {}
-                              (:peers state)))
-   (assoc :match-index (reduce #(merge %1 {%2 0}) {} (:peers state)))
+   (assoc :next-timeout (make-peer-map state heart-beat-timeout))
+   (assoc :next-index (make-peer-map state (constantly (inc (count (:log state))))))
+   (assoc :match-index (make-peer-map state (constantly 0)))
    (broadcast-heart-beat)))
 
 (defn handle-append-entries-response [state p]
-  (if (pos? (-> p :body :count)) ; heart beat response
+  (if (pos? (get-in p [:body :count])) ; heart beat response
     (-> state
         (update-match-and-next p)
         (check-commit-index))
