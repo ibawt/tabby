@@ -58,8 +58,7 @@
     (assoc-in s [:match-index (:src p)] (get (:next-index state) (:src p)))))
 
 (defn- check-commit-index [state]
-  ;;; TODO: revisit this as I bet it's wrong
-  (let [f (reverse (frequencies (vals (:match-index state))))
+  (let [f  (frequencies (vals (:match-index state)))
         [index c] (first f)]
     (if (and (quorum? state (inc c)) (> index (:commit-index state)))
       (assoc state :commit-index index)
@@ -74,7 +73,7 @@
    state
    (assoc :type :leader)
    (assoc :next-timeout (make-peer-map state heart-beat-timeout))
-   (assoc :next-index (make-peer-map state (constantly (inc (count (:log state))))))
+   (assoc :next-index (make-peer-map state  #(inc (count (:log state)))))
    (assoc :match-index (make-peer-map state (constantly 0)))
    (broadcast-heart-beat)))
 

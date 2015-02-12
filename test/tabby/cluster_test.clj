@@ -148,20 +148,18 @@
                  (until-empty)
                  (add-packet-loss 0 1)
                  (write {:a "a"})
-                 (step-times 0 2)
+                 (until-empty)
                  (step 10)
-                 (step 0))]
+                 (until-empty))]
       (is (= '(1 0 1) (map count (fields-by-id s :log))))
       (is (= '(1 0 1) (fields-by-id s :commit-index)))
 
       (let [s1 (->> s
                     (clear-packet-loss)
                     (step 10)
-                    (step 0)
-                    (step 0)
+                    (until-empty)
                     (step 10)
-                    (step 0)
-                    (step 0))]
-
+                    (until-empty))]
+        (is (= '(1 1 1) (fields-by-id s1 :last-applied)))
         (is (= '(1 1 1) (fields-by-id s1 :commit-index)))
-        (is (= '({:a "a"} {:a "a"} {:a "a"}) (fields-by-id s :db)))))))
+        (is (= '({:a "a"} {:a "a"} {:a "a"}) (fields-by-id s1 :db)))))))
