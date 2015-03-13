@@ -153,6 +153,7 @@
                  (until-empty))]
       (is (= '(1 0 1) (map count (fields-by-id s :log))))
       (is (= '(1 0 1) (fields-by-id s :commit-index)))
+      (is (= '({:a "a"} {} {:a "a"}) (fields-by-id s :db)))
 
       (let [s1 (->> s
                     (clear-packet-loss)
@@ -163,3 +164,59 @@
         (is (= '(1 1 1) (fields-by-id s1 :last-applied)))
         (is (= '(1 1 1) (fields-by-id s1 :commit-index)))
         (is (= '({:a "a"} {:a "a"} {:a "a"}) (fields-by-id s1 :db)))))))
+
+(deftest test-bigger-cluster
+  (testing "election"
+    (let [s (-> (test-cluster 5) (until-empty))]
+      (is (= '(:leader :follower :follower :follower :follower) (fields-by-id s :type)))))
+
+  (testing "write"
+    (let [s (->> (test-cluster 5)
+                 (until-empty)
+                 (write {:a "a"})
+                 (until-empty)
+                 (step 10)
+                 (until-empty))]
+      (is (= (take 5 (repeat {:a "a"})) (fields-by-id s :db)))))
+
+  (testing "missing two"
+    (let [s (->> (test-cluster 5)
+                 (until-empty)
+                 (add-packet-loss 0 1)
+                 (add-packet-loss 0 2)
+                 (write {:a "a"})
+                 (until-empty)
+                 (step 10)
+                 (until-empty)
+                 (step 10)
+                 (until-empty))]
+      (is (= '({:a "a"} {} {} {:a "a"} {:a "a"}) (fields-by-id s :db)))))
+  (testing "missing 3 - no quorum"
+    (let [s (->> (test-cluster 5)
+                 (until-empty)
+                 (add-packet-loss 0 1)
+                 (add-packet-loss 0 2)
+                 (add-packet-loss 0 3)
+                 (write {:a "a"})
+                 (until-empty)
+                 (step 10)
+                 (until-empty)
+                 (step 10)
+                 (until-empty))]
+      (is (= '(1 0 0 0 1) (map count (fields-by-id s :log))))
+      (is (= '(0 0 0 0 0) (fields-by-id s :last-applied)))
+      (is (= '({} {} {} {} {}) (fields-by-id s :db))))))
+
+(deftest test-write-no-response
+  (testing "shouldn't write the same log entry over if the same one is sent"
+    (let [s (->> (test-cluster 3)
+                 (until-empty)
+                 (add-packet-loss 1 0)
+                 (write {:a "a"})
+                 (until-empty)
+                 (step 10)
+                 (until-empty)
+                 (step 10)
+                 (until-empty))]
+      (is (= '(1 1 1) (map count (fields-by-id s :log))))
+      (is (= '({:a "a"} {} {:a "a"}) (fields-by-id s :db))))))

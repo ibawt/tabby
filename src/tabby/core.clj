@@ -1,6 +1,7 @@
 (ns tabby.core
   (:require [tabby.server :as server]
-            [tabby.utils :as u]))
+            [tabby.utils :as u]
+            [tabby.net :as net]))
 
 ;; ;; TODO: remove these things into some testing and dev deps
 ;; (def cluster-states (atom nil))
