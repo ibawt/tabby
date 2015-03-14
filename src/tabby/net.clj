@@ -60,26 +60,28 @@
 (defn incoming-message-loop
   [f state]
   (fn [s info]
-    ;;; TODO: auth handshake
-    (warn "connected..." info)
-    (d/let-flow [handshake (s/take! s)]
-                (warn "["(:id @state) "]" "handshake from " handshake )
-                (swap! state assoc-in [:peer-sockets handshake] s)
+    (d/let-flow [handshake (s/take! s)
+                 _ (s/put! s (:id @state))]
+                (if (get-in @state [:peer-sockets handshake])
+                  (warn (:id @state )": already connected to: "  handshake)
+                  (swap! state assoc-in [:peer-sockets handshake] s))
                 (d/loop []
-                  (warn "do we get in here?" handshake)
+                  (warn "loop..." (:id @state))
                   (-> (s/take! s ::none)
                       (d/chain
                        (fn [msg]
                          (if (= ::none msg)
-                           (s/close! s)
+                           (do
+                             (warn "closing!")
+                             (s/close! s))
                            (do
                              (f msg)
-                             (d/recur))))
-                       (d/catch
-                           (fn [ex]
-                             (warn ex "in close")
-                             (s/put! s (str "CLOSED:" ex))
-                             (s/close! s)))))))))
+                             (d/recur)))))
+                      (d/catch
+                          (fn [ex]
+                            (warn ex "in close")
+                            (s/put! s (str "CLOSED:" ex))
+                            (s/close! s))))))))
 
 (defn now []
   (System/currentTimeMillis))
@@ -89,7 +91,7 @@
   true)
 
 (defn handle-rx-pkt [state dt pkt]
-  (warn "handle-rx-pkt")
+  (warn "handle-rx dt: " dt pkt)
   (swap! state (fn [s]
                  (-> s
                      (update-in [:rx-queue] conj pkt)
@@ -98,17 +100,16 @@
 
 (defn connect-to-peer [state peer]
   (let [socket @(client "localhost" (+ 8080 peer))]
-    (warn "client connected")
-    (utils/dbg s/put! socket (:id @state))
-    (warn "after put")
-    (swap! state assoc-in [:peer-sockets peer] socket)))
+    (d/let-flow [_ (s/put! socket (:id @state))
+                 resp (s/take! socket)]
+                (swap! state assoc-in [:peer-sockets peer] socket))))
 
 (defn send-pkt [state pkt]
   (warn "sending from: " (:id @state) " to: " (:dst pkt) " of type: " (:type pkt))
   (let [peer (:dst pkt)]
     (when-not (get-in @state [:peer-sockets peer])
-      (warn "connecting to peer " peer)
-      (connect-to-peer state peer))
+      (info "connecting...")
+      @(connect-to-peer state peer))
     (s/put! (get-in @state [:peer-sockets peer]) pkt))
   true)
 
@@ -142,7 +143,6 @@
 
 (defn handle-message [state]
   (fn [msg]
-    (info "got message:" msg)
     (a/go
       (a/>! (:rx-chan @state) msg))))
 
