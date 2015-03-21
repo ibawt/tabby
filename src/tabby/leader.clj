@@ -1,6 +1,7 @@
 (ns tabby.leader
   (:require [tabby.log :refer :all]
-            [tabby.utils :refer :all]))
+            [tabby.utils :refer :all]
+            [clojure.tools.logging :refer :all]))
 
 (defn- heart-beat-timeout []
   (inc (rand-int 9)))
@@ -69,6 +70,7 @@
              [p (f)])))
 
 (defn become-leader [state]
+  (warn (:id state) " becoming leader")
   (->
    state
    (assoc :type :leader)

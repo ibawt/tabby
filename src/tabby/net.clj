@@ -10,9 +10,7 @@
             [clojure.tools.logging :refer :all]
             [clojure.tools.namespace.repl :refer [refresh]]
             [tabby.server :as server]
-            [tabby.cluster :as cluster])
-  (:import [java.net ServerSocket Socket]
-           [java.io DataInputStream DataOutputStream]))
+            [tabby.cluster :as cluster]))
 
 (defmacro sleep
   ([ms stop-channel]
@@ -62,21 +60,16 @@
   (fn [s info]
     (d/let-flow [handshake (s/take! s)
                  _ (s/put! s (:id @state))]
-                (if (get-in @state [:peer-sockets handshake])
-                  (warn (:id @state )": already connected to: "  handshake)
+                (when-not (get-in @state [:peer-sockets handshake])
                   (swap! state assoc-in [:peer-sockets handshake] s))
                 (d/loop []
-                  (warn "loop..." (:id @state))
                   (-> (s/take! s ::none)
                       (d/chain
                        (fn [msg]
                          (if (= ::none msg)
-                           (do
-                             (warn "closing!")
-                             (s/close! s))
-                           (do
-                             (f msg)
-                             (d/recur)))))
+                           (s/close! s)
+                           (do (f msg)
+                               (d/recur)))))
                       (d/catch
                           (fn [ex]
                             (warn ex "in close")
@@ -90,14 +83,6 @@
   (swap! state (partial server/update dt))
   true)
 
-(defn handle-rx-pkt [state dt pkt]
-  (warn "handle-rx dt: " dt pkt)
-  (swap! state (fn [s]
-                 (-> s
-                     (update-in [:rx-queue] conj pkt)
-                     ((partial server/update dt)))))
-  true)
-
 (defn connect-to-peer [state peer]
   (let [socket @(client "localhost" (+ 8080 peer))]
     (d/let-flow [_ (s/put! socket (:id @state))
@@ -105,10 +90,8 @@
                 (swap! state assoc-in [:peer-sockets peer] socket))))
 
 (defn send-pkt [state pkt]
-  (warn "sending from: " (:id @state) " to: " (:dst pkt) " of type: " (:type pkt))
   (let [peer (:dst pkt)]
     (when-not (get-in @state [:peer-sockets peer])
-      (info "connecting...")
       @(connect-to-peer state peer))
     (s/put! (get-in @state [:peer-sockets peer]) pkt))
   true)
@@ -122,17 +105,25 @@
         (swap! s update-in [:tx-queue] rest)
         (recur)))))
 
+(defn handle-rx-pkt [state dt pkt]
+  (swap! state (fn [s]
+                 (-> s
+                     (update-in [:rx-queue] conj pkt)
+                     ((partial server/update dt)))))
+  true)
+
 (defn event-loop [state]
   (let [stop (a/chan)]
-    (a/go-loop [t (now)]
-      (transmit state)
-      (if (a/alt!
-            (:rx-chan @state) ([v] (handle-rx-pkt state (- (now) t) v))
-            stop false
-            (a/timeout 10) (handle-timeout state (- (now) t))
-            (:tx-chan @state) ([v] (send-pkt state v)))
-        (recur (now))
-        :stopped))
+    (a/go
+      (loop [t (now)]
+        (transmit state)
+        (if (a/alt!
+              (:rx-chan @state) ([v] (handle-rx-pkt state (- (now) t) v))
+              stop false
+              (a/timeout 10) (handle-timeout state (- (now) t))
+              (:tx-chan @state) ([v] (send-pkt state v)))
+          (recur (now))
+          :stopped)))
     stop))
 
 (defn pkts-for-dst [state id]
@@ -148,10 +139,8 @@
 
 (defn create-server [server]
   (let [s (atom (assoc server :time (System/currentTimeMillis)))
-        socket (start-server (incoming-message-loop (handle-message s) s) (+ (:id server) 8080))
-        e (event-loop s)]
-    (swap! s merge {:event-loop e
-                    :server-socket socket
+        socket (start-server (incoming-message-loop (handle-message s) s) (+ (:id server) 8080))]
+    (swap! s merge {:server-socket socket
                     :rx-chan (a/chan) :tx-chan (a/chan)})
     s))
 
@@ -159,15 +148,24 @@
 
 (def servers {})
 
+(defn connect-to-peers [server]
+  (doseq [peer (:peers @server)]
+    @(connect-to-peer server peer)))
+
 (defn start[]
   (alter-var-root #'servers (fn [x]
-                              (utils/mapf (:servers (cluster/create 3)) create-server))))
+                              (utils/mapf (:servers (cluster/create 3)) create-server)))
+  (doseq [[id server] servers]
+    (connect-to-peers server)
+    (swap! server assoc :event-loop (event-loop server))))
+
 (defn stop []
   (doall
    (utils/mapf servers (fn [server]
                          (.close (:server-socket @server))
                          (when-let [e (:event-loop @server)]
                            (a/close! e))
+                         (doall (utils/mapf (:peer-sockets @server) s/close!))
                          server))))
 (defn reset []
   (stop)

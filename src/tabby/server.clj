@@ -3,6 +3,7 @@
             [tabby.log :refer :all]
             [tabby.leader :refer :all]
             [tabby.follower :refer :all]
+            [clojure.tools.logging :refer :all]
             [tabby.candidate :refer :all]))
 
 ;;; Utility Functions
@@ -53,7 +54,7 @@
   (-> state
       (update-in [:election-timeout] - dt)
       (apply-commit-index)
-      (check-election-timeout)
+      (if-not-leader? check-election-timeout)
       (process-rx-packets)
       (if-leader? check-backlog dt)))
 

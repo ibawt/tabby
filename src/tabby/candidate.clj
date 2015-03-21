@@ -1,7 +1,8 @@
 (ns tabby.candidate
   (:require [tabby.utils :refer :all]
             [tabby.leader :refer :all]
-            [tabby.log :refer :all]))
+            [tabby.log :refer :all]
+            [clojure.tools.logging :refer :all]))
 
 (defn- make-request-vote-pkt [state peer]
   {:dst peer
@@ -18,6 +19,7 @@
                   (transmit s (make-request-vote-pkt s p)))))
 
 (defn become-candidate [state]
+  (warn (:id state) " becoming candidate")
   (-> state
       (assoc :type :candidate)
       (assoc :voted-for (:id state))

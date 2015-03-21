@@ -1,7 +1,8 @@
 (ns tabby.follower
   (:require [tabby.utils :refer :all]
             [tabby.log :refer :all]
-            [tabby.candidate :refer :all]))
+            [tabby.candidate :refer :all]
+            [clojure.tools.logging :refer :all]))
 
 (defn- election-timeout? [state]
   (<= (:election-timeout state) 0))
@@ -54,6 +55,7 @@
 (defn become-follower
   "called from the packet queue if current-term < supplied term"
   [state]
+  (warn (:id state) " becoming follower")
   (-> state
       (assoc :type :follower)
       (assoc :voted-for nil)))

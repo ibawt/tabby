@@ -50,3 +50,6 @@
 
 (defn if-follower? [state f & args]
   (if (follower? state) (apply f state args) state))
+
+(defn if-not-leader? [state f & args]
+  (if-not (leader? state) (apply f state args) state))
