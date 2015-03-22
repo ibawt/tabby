@@ -91,14 +91,18 @@
     (s/put! (get-in @state [:peer-sockets peer]) pkt))
   true)
 
-(defn transmit [s]
-  (loop []
-    (if (empty? (:tx-queue @s))
-      s
-      (do
-        (send-pkt s (first (:tx-queue @s)))
-        (swap! s update-in [:tx-queue] rest)
-        (recur)))))
+(defn transmit [state]
+  (swap! state (fn [s]
+                 (doseq [pkt (:tx-queue s)]
+                   (send-pkt state pkt))
+                 (assoc s :tx-queue '()))))
+  ;; (loop []
+  ;;   (if (empty? (:tx-queue @s))
+  ;;     s
+  ;;     (do
+  ;;       (send-pkt s (first (:tx-queue @s)))
+  ;;       (swap! s update-in [:tx-queue] rest)
+  ;;       (recur)))))
 
 (defn handle-rx-pkt [state dt pkt]
   (swap! state (fn [s]
@@ -112,17 +116,16 @@
       (if (a/alt!
             (:rx-chan @state) ([v] (handle-rx-pkt state (- (now) t) v))
             stop false
-            (a/timeout 10) (handle-timeout state (- (now) t))
-            (:tx-chan @state) ([v] (send-pkt state v)))
+            (a/timeout 10) (handle-timeout state (- (now) t)))
         (recur (now))
         :stopped))
     stop))
 
 (defn create-server [server]
-  (let [s (atom (assoc server :time (System/currentTimeMillis)))
+  (let [s (atom server)
         socket (start-server (connection-handler s) (+ (:id server) 8080))]
     (swap! s merge {:server-socket socket
-                    :rx-chan (a/chan) :tx-chan (a/chan)})
+                    :rx-chan (a/chan)})
     s))
 
 (def servers {})
