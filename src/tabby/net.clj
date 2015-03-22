@@ -25,6 +25,11 @@
                ~@body))
        ~stop)))
 
+(defn peering-handshake [state pkt]
+  (if (= :peering-handshake (:type pkt))
+    {:type :peering-ok :src (:id @state)}
+    {:type :peering-fail :src (:id @state)}))
+
 (def protocol
   (gloss/compile-frame
    (gloss/finite-frame :uint32
@@ -55,26 +60,17 @@
      (handler (wrap-duplex-stream protocol s) info))
    {:port port}))
 
-(defn incoming-message-loop
-  [f state]
+(defn connection-handler
+  [state]
   (fn [s info]
-    (d/let-flow [handshake (s/take! s)
-                 _ (s/put! s (:id @state))]
-                (when-not (get-in @state [:peer-sockets handshake])
-                  (swap! state assoc-in [:peer-sockets handshake] s))
-                (d/loop []
-                  (-> (s/take! s ::none)
-                      (d/chain
-                       (fn [msg]
-                         (if (= ::none msg)
-                           (s/close! s)
-                           (do (f msg)
-                               (d/recur)))))
-                      (d/catch
-                          (fn [ex]
-                            (warn ex "in close")
-                            (s/put! s (str "CLOSED:" ex))
-                            (s/close! s))))))))
+    (d/let-flow
+     [handshake (s/take! s)]
+     (if (= :peering-handshake (:type handshake))
+       (s/connect s (:rx-chan @state))
+       (do
+         (warn "ARGH")
+         ;(client-message-loop s state)
+         )))))
 
 (defn now []
   (System/currentTimeMillis))
@@ -85,8 +81,7 @@
 
 (defn connect-to-peer [state peer]
   (let [socket @(client "localhost" (+ 8080 peer))]
-    (d/let-flow [_ (s/put! socket (:id @state))
-                 resp (s/take! socket)]
+    (d/let-flow [_ (s/put! socket {:src (:id @state) :type :peering-handshake})]
                 (swap! state assoc-in [:peer-sockets peer] socket))))
 
 (defn send-pkt [state pkt]
@@ -107,44 +102,28 @@
 
 (defn handle-rx-pkt [state dt pkt]
   (swap! state (fn [s]
-                 (-> s
-                     (update-in [:rx-queue] conj pkt)
-                     ((partial server/update dt)))))
+                 (server/update dt (update-in s [:rx-queue] conj pkt))))
   true)
 
 (defn event-loop [state]
   (let [stop (a/chan)]
-    (a/go
-      (loop [t (now)]
-        (transmit state)
-        (if (a/alt!
-              (:rx-chan @state) ([v] (handle-rx-pkt state (- (now) t) v))
-              stop false
-              (a/timeout 10) (handle-timeout state (- (now) t))
-              (:tx-chan @state) ([v] (send-pkt state v)))
-          (recur (now))
-          :stopped)))
+    (a/go-loop [t (now)]
+      (transmit state)
+      (if (a/alt!
+            (:rx-chan @state) ([v] (handle-rx-pkt state (- (now) t) v))
+            stop false
+            (a/timeout 10) (handle-timeout state (- (now) t))
+            (:tx-chan @state) ([v] (send-pkt state v)))
+        (recur (now))
+        :stopped))
     stop))
-
-(defn pkts-for-dst [state id]
-  (filter #(= id (:dst %)) (:tx-queue state)))
-
-(defn pkts-not-for-dst [state id]
-  (filter #(not= id (:dst %)) (:tx-queue state)))
-
-(defn handle-message [state]
-  (fn [msg]
-    (a/go
-      (a/>! (:rx-chan @state) msg))))
 
 (defn create-server [server]
   (let [s (atom (assoc server :time (System/currentTimeMillis)))
-        socket (start-server (incoming-message-loop (handle-message s) s) (+ (:id server) 8080))]
+        socket (start-server (connection-handler s) (+ (:id server) 8080))]
     (swap! s merge {:server-socket socket
                     :rx-chan (a/chan) :tx-chan (a/chan)})
     s))
-
-(defn broadcast-pkts [s pkts])
 
 (def servers {})
 

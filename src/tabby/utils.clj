@@ -22,8 +22,9 @@
   []
   (+ (rand-int election-timeout-max) election-timeout-max))
 
-(defn foreach-peer [state f & args]
+(defn foreach-peer
   "calls f with current state, the peer and etc."
+  [state f & args]
   (loop [s state
          p (:peers state)]
     (if (empty? p) s
