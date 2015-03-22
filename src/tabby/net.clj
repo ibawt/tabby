@@ -66,7 +66,11 @@
     (d/let-flow
      [handshake (s/take! s)]
      (if (= :peering-handshake (:type handshake))
-       (s/connect s (:rx-chan @state))
+       (do
+         (when-not (get-in @state [:peer-sockets (:src handshake)])
+           (info "in here???")
+           (swap! state assoc-in [:peer-sockets (:src handshake)] s))
+         (s/connect s (:rx-chan @state)))
        (do
          (warn "ARGH")
          ;(client-message-loop s state)
@@ -96,13 +100,6 @@
                  (doseq [pkt (:tx-queue s)]
                    (send-pkt state pkt))
                  (assoc s :tx-queue '()))))
-  ;; (loop []
-  ;;   (if (empty? (:tx-queue @s))
-  ;;     s
-  ;;     (do
-  ;;       (send-pkt s (first (:tx-queue @s)))
-  ;;       (swap! s update-in [:tx-queue] rest)
-  ;;       (recur)))))
 
 (defn handle-rx-pkt [state dt pkt]
   (swap! state (fn [s]
@@ -132,7 +129,7 @@
 
 (defn connect-to-peers [server]
   (doseq [peer (:peers @server)]
-    @(connect-to-peer server peer)))
+    (connect-to-peer server peer)))
 
 (defn start[]
   (alter-var-root #'servers (fn [x]

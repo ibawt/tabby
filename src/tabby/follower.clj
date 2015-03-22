@@ -57,5 +57,6 @@
   [state]
   (warn (:id state) " becoming follower")
   (-> state
+      (assoc :election-timeout (random-election-timeout))
       (assoc :type :follower)
       (assoc :voted-for nil)))
