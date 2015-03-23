@@ -65,22 +65,39 @@
   (fn [s info]
     (d/let-flow
      [handshake (s/take! s)]
-     (if (= :peering-handshake (:type handshake))
-       (do
-         (when-not (get-in @state [:peer-sockets (:src handshake)])
-           (info "in here???")
-           (swap! state assoc-in [:peer-sockets (:src handshake)] s))
-         (s/connect s (:rx-chan @state)))
-       (do
-         (warn "ARGH")
-         ;(client-message-loop s state)
-         )))))
+     (condp = (:type handshake)
+       :peering-handshake (do
+                            (when-not (get-in @state [:peer-sockets (:src handshake)])
+                              (swap! state assoc-in [:peer-sockets (:src handshake)] s))
+                            (s/connect s (:rx-chan @state)))
+
+       :table-tennis (do
+                       (d/loop []
+                         (-> (s/take! s ::none)
+                             (d/chain
+                              (fn [msg]
+                                (when (= :ping msg)
+                                  (s/put! s :pong)
+                                  (d/recur)))))))
+
+       :client-handshake (let [client-index
+                               (count (swap! state update-in [:clients] conj s))]
+                           (d/loop []
+                             (-> (s/take! s)
+                                 (d/chain
+                                  (fn [msg]
+                                    (warn "msg: " msg)
+                                    (d/future
+                                      (Thread/sleep 100)
+                                      (warn "reading a message , in the future derp")
+                                      (s/put! s :ok)
+                                      (d/recur)))))))))))
 
 (defn now []
   (System/currentTimeMillis))
 
 (defn handle-timeout [state dt]
-  (swap! state (partial server/update dt))
+  (swap! state (fn [s] (server/update dt s)))
   true)
 
 (defn connect-to-peer [state peer]

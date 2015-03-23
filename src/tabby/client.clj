@@ -7,5 +7,17 @@
             [tabby.net :as net]
             [clojure.tools.logging :refer :all]))
 
-(defn get [host options]
-  )
+(defn connect [host port]
+  (let [client @(net/client host port)]
+    (s/put! client {:type :client-handshake})
+    client))
+
+(defn get-value
+  [client key]
+  (s/put! client {:type :get :value key})
+  (s/take! client))
+
+(defn merge
+  [client m]
+  (s/put! client {:type :merge :value m})
+  (s/take! client))
