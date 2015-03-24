@@ -79,12 +79,43 @@
    (assoc :match-index (make-peer-map state (constantly 0)))
    (broadcast-heart-beat)))
 
+(defn inc-hb-counts
+  [state p]
+  (update-in state [:clients] #(map (fn [client]
+                                      (update-in client [:hb-count] conj (:src p))) %)))
+
+(defn check-read
+  [state client index]
+  (if (quorum? state (count (:hb-count client)))
+    (transmit state {:src (:id state) :client-dst index :body {:foo "bar"}})
+    state))
+
+(defn return-reads
+  [state]
+  (loop [s state
+         index 0
+         c (:clients state)]
+    (if (empty? c)
+      c
+      (recur (check-read state (first c) index)
+             (inc index)
+             (rest c)))))
+
 (defn handle-append-entries-response [state p]
   (if (pos? (get-in p [:body :count])) ; heart beat response
     (-> state
         (update-match-and-next p)
         (check-commit-index))
-    state))
+    (inc-hb-counts state p)))
+
+(defn client-read
+  [state {client-id :client-id key :key uuid :uuid}]
+  (if (= uuid (get-in state [:clients client-id :last-uuid]))
+    (get-in state [:clients client-id :last-response])
+    (-> (update-in state [:clients client-id] merge {:hb-count #{}
+                                                     :key key
+                                                     :uuid uuid})
+        (broadcast-heart-beat))))
 
 (defn write [state kv]
   (->

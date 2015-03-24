@@ -77,11 +77,11 @@
                              (d/chain
                               (fn [msg]
                                 (when (= :ping msg)
-                                  (s/put! s :pong)
-                                  (d/recur)))))))
+                                  (s/put! s :pong))
+                                (d/recur))))))
 
        :client-handshake (let [client-index
-                               (count (swap! state update-in [:clients] conj s))]
+                               (count (:clients (swap! state update-in [:clients] conj {:socket s})))]
                            (d/loop []
                              (-> (s/take! s)
                                  (d/chain
@@ -158,11 +158,13 @@
 (defn stop []
   (doall
    (utils/mapf servers (fn [server]
-                         (.close (:server-socket @server))
                          (when-let [e (:event-loop @server)]
                            (a/close! e))
+                         (when-let [ s (:server-socket @server)]
+                                   (.close s))
                          (doall (utils/mapf (:peer-sockets @server) s/close!))
-                         server))))
+                         (swap! server merge {:event-loop nil
+                                              :server-socket nil})))))
 (defn reset []
   (stop)
   (refresh :after 'tabby.net/start))
