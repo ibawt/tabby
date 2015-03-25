@@ -38,9 +38,7 @@
 
                                         (cl/step-times 0 2)
                                         (cl/step 10)
-                                        (cl/step 0)
-                                         )
-                              )))
+                                        (cl/step 0)))))
 
 (defn servers []
   (:servers cluster))

@@ -31,10 +31,21 @@
      (update-in [:db] (partial apply-entry state)))
     state))
 
+(defn- redirect-to-leader [state p]
+  (transmit state {:client-dst (:client-id p)
+                   :leader-id (:leader-id state)}))
+
+(defn- handle-get [state p]
+  (if (leader? state)
+    (write state (select-keys p [:key :value]))
+    (redirect-to-leader state p)))
+
 (defn- handle-packet [state]
   (let [p (first (:rx-queue state))
         s (check-term state (:body p))]
     (condp = (:type p)
+      :get (handle-get s p)
+      ;:set (handle-set s p)
       :request-vote (handle-request-vote s p)
       :request-vote-reply (handle-request-vote-response s p)
       :append-entries (handle-append-entries s p)
@@ -46,9 +57,6 @@
         (recur (-> s
                    (handle-packet)
                    (update-in [:rx-queue] rest))))))
-
-(defn- redirect-to-leader [state]
-  state)
 
 (defn update [dt state]
   (-> state
@@ -77,4 +85,5 @@
    :type :follower
    :election-timeout (random-election-timeout)
    :peers []
+   :clients []
    :db {}})

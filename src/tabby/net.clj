@@ -71,27 +71,23 @@
                               (swap! state assoc-in [:peer-sockets (:src handshake)] s))
                             (s/connect s (:rx-chan @state)))
 
-       :table-tennis (do
-                       (d/loop []
-                         (-> (s/take! s ::none)
-                             (d/chain
-                              (fn [msg]
-                                (when (= :ping msg)
-                                  (s/put! s :pong))
-                                (d/recur))))))
+       :table-tennis (d/loop []
+                       (-> (s/take! s ::none)
+                           (d/chain
+                            (fn [msg]
+                              (when (= :ping msg)
+                                (s/put! s :pong))
+                              (d/recur)))))
 
        :client-handshake (let [client-index
                                (count (:clients (swap! state update-in [:clients] conj {:socket s})))]
                            (d/loop []
-                             (-> (s/take! s)
+                             (-> (s/take! s ::none)
                                  (d/chain
                                   (fn [msg]
-                                    (warn "msg: " msg)
-                                    (d/future
-                                      (Thread/sleep 100)
-                                      (warn "reading a message , in the future derp")
-                                      (s/put! s :ok)
-                                      (d/recur)))))))))))
+                                    (a/go
+                                      (a/>! (:rx-chain @state) (merge msg {:client-id client-index})))
+                                    (d/recur))))))))))
 
 (defn now []
   (System/currentTimeMillis))
@@ -106,10 +102,12 @@
                 (swap! state assoc-in [:peer-sockets peer] socket))))
 
 (defn send-pkt [state pkt]
-  (let [peer (:dst pkt)]
+  (when-let [peer (:dst pkt)]
     (when-not (get-in @state [:peer-sockets peer])
       @(connect-to-peer state peer))
     (s/put! (get-in @state [:peer-sockets peer]) pkt))
+  (when-let [client (:client-dst @state)]
+    (s/put! (get-in @state [:clients client :socket]) pkt))
   true)
 
 (defn transmit [state]
