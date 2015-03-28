@@ -37,6 +37,11 @@
 
 (defn- handle-get [state p]
   (if (leader? state)
+    (client-read state p)
+    (redirect-to-leader state p)))
+
+(defn- handle-set [state p]
+  (if (leader? state)
     (write state (select-keys p [:key :value]))
     (redirect-to-leader state p)))
 
@@ -45,7 +50,7 @@
         s (check-term state (:body p))]
     (condp = (:type p)
       :get (handle-get s p)
-      ;:set (handle-set s p)
+      set (handle-set s p)
       :request-vote (handle-request-vote s p)
       :request-vote-reply (handle-request-vote-response s p)
       :append-entries (handle-append-entries s p)

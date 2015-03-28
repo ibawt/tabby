@@ -7,6 +7,9 @@
             [tabby.net :as net]
             [clojure.tools.logging :refer :all]))
 
+(defn- gen-uuid []
+  (.toString (java.util.UUID/randomUUID)))
+
 (defn connect [host port]
   (let [client @(net/client host port)]
     (s/put! client {:type :client-handshake})
@@ -14,7 +17,7 @@
 
 (defn get-value
   [client key]
-  (s/put! client {:type :get :value key})
+  (s/put! client {:type :get :value key :uuid (gen-uuid)})
   (s/take! client))
 
 (defn merge

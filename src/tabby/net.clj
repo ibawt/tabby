@@ -86,7 +86,7 @@
                                  (d/chain
                                   (fn [msg]
                                     (a/go
-                                      (a/>! (:rx-chain @state) (merge msg {:client-id client-index})))
+                                      (a/>! (:rx-chan @state) (merge msg {:client-id client-index})))
                                     (d/recur))))))))))
 
 (defn now []
@@ -126,7 +126,7 @@
     (a/go-loop [t (now)]
       (transmit state)
       (if (a/alt!
-            (:rx-chan @state) ([v] (handle-rx-pkt state (- (now) t) v))
+            (:rx-chan @state) ([v] (if v (handle-rx-pkt state (- (now) t) v) false))
             stop false
             (a/timeout 10) (handle-timeout state (- (now) t)))
         (recur (now))
