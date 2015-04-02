@@ -1,54 +1,32 @@
 (ns user
   (:require [tabby.server :as server]
-            [tabby.cluster :as cl]
+            [tabby.cluster :as cluster]
+            [tabby.local-net :as local-net]
             [clojure.tools.namespace.repl :refer [refresh]]))
 
-(def cluster nil)
+(def cluster-maker
+  (partial local-net/create-network-cluster 10 8090))
 
-(defn update-in-srv [id field f & args]
-  (cl/update-in-srv cluster id field f args))
+(def cluster (cluster-maker))
 
-(defn init
-  []
-  (alter-var-root #'cluster (constantly
-                             (cl/update-in-srv (cl/create 3)
-                                               0 :election-timeout (constantly 0)))))
+(defmacro setc [& body]
+  `(alter-var-root #'cluster
+                   (fn ~@body)))
+
+(defn init []
+  (setc [c] (cluster/init-cluster c 3)))
 
 (defn step [dt]
-  (alter-var-root #'cluster #(cl/step dt %)))
-
-(defn srv [id]
-  (get (:servers cluster) id))
-
-(defn update-cluster [f]
-  (alter-var-root #'cluster f))
-
-(defn ps []
-  (cl/ps cluster))
-
-(defn test-cluster [n]
-  (-> (cl/create n)
-      (assoc-in [:servers 0 :election-timeout] 0)))
-
-(defn t []
-  (alter-var-root #'cluster (fn [x] (->> (test-cluster 3)
-                                         (cl/until-empty)
-                                         (cl/add-packet-loss 0 1)
-                                         (cl/write {:a "a"})
-
-                                        (cl/step-times 0 2)
-                                        (cl/step 10)
-                                        (cl/step 0)))))
+  (setc [c] (cluster/step-cluster c dt)))
 
 (defn servers []
   (:servers cluster))
 
-(defn until-empty []
-  (cl/until-empty cluster))
+(defn start []
+  (setc [c] (cluster/start-cluster c)))
 
-(defn start [])
-
-(defn stop [])
+(defn stop []
+  (setc [c] (cluster/stop-cluster c)))
 
 (defn go
   []

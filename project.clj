@@ -15,6 +15,6 @@
                 *print-level* 20}
   :main ^:skip-aot tabby.core
   :target-path "target/%s"
-
+  :repl-options {:init-ns user}
   :profiles {:uberjar {:aot :all}
              :dev {:source-paths ["dev"]}})

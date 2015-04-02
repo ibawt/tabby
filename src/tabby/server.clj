@@ -1,5 +1,5 @@
 (ns tabby.server
-  (:require [tabby.utils :refer :all]
+  (:require [tabby.utils :as utils]
             [tabby.log :refer :all]
             [tabby.leader :refer :all]
             [tabby.follower :refer :all]
@@ -27,21 +27,21 @@
   (if (> (:commit-index state) (:last-applied state))
     (->
      state
-     (update-in [:last-applied] inc)
-     (update-in [:db] (partial apply-entry state)))
+     (utils/update :last-applied inc)
+     (utils/update :db (partial apply-entry state)))
     state))
 
 (defn- redirect-to-leader [state p]
-  (transmit state {:client-dst (:client-id p)
+  (utils/transmit state {:client-dst (:client-id p)
                    :leader-id (:leader-id state)}))
 
 (defn- handle-get [state p]
-  (if (leader? state)
+  (if (utils/leader? state)
     (client-read state p)
     (redirect-to-leader state p)))
 
 (defn- handle-set [state p]
-  (if (leader? state)
+  (if (utils/leader? state)
     (write state (select-keys p [:key :value]))
     (redirect-to-leader state p)))
 
@@ -50,7 +50,7 @@
         s (check-term state (:body p))]
     (condp = (:type p)
       :get (handle-get s p)
-      set (handle-set s p)
+      :set (handle-set s p)
       :request-vote (handle-request-vote s p)
       :request-vote-reply (handle-request-vote-response s p)
       :append-entries (handle-append-entries s p)
@@ -61,21 +61,22 @@
     (if (empty? (:rx-queue s)) s
         (recur (-> s
                    (handle-packet)
-                   (update-in [:rx-queue] rest))))))
+                   (utils/update :rx-queue rest))))))
 
 (defn update [dt state]
-  (-> state
-      (update-in [:election-timeout] - dt)
-      (apply-commit-index)
-      (if-not-leader? check-election-timeout)
-      (process-rx-packets)
-      (if-leader? check-backlog dt)))
+  (->
+   (utils/update state :election-timeout - dt)
+   (apply-commit-index)
+   (utils/if-not-leader? check-election-timeout)
+   (process-rx-packets)
+   (utils/if-leader? check-backlog dt)
+   (utils/if-leader? check-reads)))
 
 (defn set-peers [state peers]
   (assoc state :peers peers))
 
 (defn handle-write [state kv]
-  (if (leader? state)
+  (if (utils/leader? state)
     (write state kv)
     (redirect-to-leader state)))
 
@@ -88,7 +89,7 @@
    :commit-index 0
    :last-applied 0
    :type :follower
-   :election-timeout (random-election-timeout)
+   :election-timeout (utils/random-election-timeout)
    :peers []
    :clients []
    :db {}})

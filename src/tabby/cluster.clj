@@ -3,6 +3,13 @@
             [tabby.utils :refer :all]))
 
 ;;; Testing and Development things for cluster testing
+(defn foreach-server
+  ([state f]
+   (update state :servers mapf f))
+
+  ([state f & args]
+   (update state :servers mapf f args)))
+
 (defn- find-peers [id servers]
   (vec (keys (filterv (fn [[k v]] (not= k id)) servers))))
 
@@ -39,7 +46,7 @@
                (update-in v [:rx-queue] concat (collect-packets system (:id v))))))
 
 (defn clear-tx-packets [system]
-  (update-in system [:servers] mapf assoc :tx-queue '()))
+  (update system :servers mapf assoc :tx-queue '()))
 
 (defn pump-transmit-queues [system]
   (-> system
@@ -49,8 +56,8 @@
 (defn step [dt system]
   (-> system
       (pump-transmit-queues)
-      (update-in [:servers] mapf (partial server/update dt))
-      (update-in [:time] + dt)))
+      (update :servers mapf (partial server/update dt))
+      (update :time + dt)))
 
 (defn step-times [dt times system]
   (loop [s system
@@ -80,6 +87,26 @@
 
 (defn until-empty [cluster]
   (loop [c (step 0 cluster)]
-    (if (zero? (reduce + (for [[k v] (:servers c)] (server/packet-count v))))
+    (if (zero? (reduce + (for [[k v] ("servers" c)] (server/packet-count v))))
       c
       (recur (step 0 c)))))
+
+(defprotocol Cluster
+  (init-cluster [this num])
+  (start-cluster [this])
+  (stop-cluster [this])
+  (step-cluster [this dt]))
+
+(defrecord NoNetworkCluster [servers time]
+  Cluster
+  (init-cluster [this num]
+    (assoc this (create num)))
+  (start-cluster [this]
+    this)
+  (stop-cluster [this]
+    this)
+  (step-cluster [this dt]
+    (step dt this)))
+
+(defn create-no-network-cluster [num]
+  (map->NoNetworkCluster (create num)))

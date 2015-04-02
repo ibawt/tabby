@@ -1,16 +1,23 @@
 (ns tabby.utils)
 
+(defmacro update
+  ([m k f]
+   `(update-in ~m [~k] ~f))
+  ([m k f & args]
+   `(update-in ~m [~k] ~f ~@args)))
+
 (defmacro dbg [& body]
   `(let [x# ~body]
      (println (quote ~body) "=" x#) x#))
 
-(defn trace-s [state]
-  (println (select-keys state [:id :type :election-timeout
-                               :current-term :commit-index]))
-  state)
-
-(defn mapf [m f & args]
-  (into {} (for [[k v] m] [k (apply f v args)])))
+(defn mapf
+  "apply f to each value of m and return the updated m"
+  ([m f]
+   (into {} (for [[k v] m] [k (f v)])))
+  ([m f arg0]
+   (into {} (for [[k v] m] [k (f v arg0)])))
+  ([m f arg0 & args]
+   (into {} (for [[k v] m] [k (apply f v arg0 args)]))))
 
 (def election-timeout-max 150)
 
@@ -32,7 +39,7 @@
                (rest p)))))
 
 (defn transmit [state request]
-  (update-in state [:tx-queue] conj request))
+  (update state :tx-queue conj request))
 
 (defn quorum? [state c]
   (>= c (inc (/ (count (:peers state)) 2))))

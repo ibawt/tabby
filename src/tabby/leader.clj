@@ -59,7 +59,7 @@
     (assoc-in s [:match-index (:src p)] (get (:next-index state) (:src p)))))
 
 (defn- check-commit-index [state]
-  (let [f  (frequencies (vals (:match-index state)))
+  (let [f (frequencies (vals (:match-index state)))
         [index c] (first f)]
     (if (and (quorum? state (inc c)) (> index (:commit-index state)))
       (assoc state :commit-index index)
@@ -90,13 +90,13 @@
     (transmit state {:src (:id state) :client-dst index :body {:foo "bar"}})
     state))
 
-(defn return-reads
+(defn check-reads
   [state]
   (loop [s state
          index 0
          c (:clients state)]
     (if (empty? c)
-      c
+      s
       (recur (check-read state (first c) index)
              (inc index)
              (rest c)))))
