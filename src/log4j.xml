@@ -7,6 +7,9 @@
             <param name="ConversionPattern" value="%-5p %c{1} - %m%n"/>
         </layout>
     </appender>
+    <logger name="io.netty">
+      <level value="fatal"/>
+    </logger>
     <logger name="com.mchange">
         <level value="warn"/>
     </logger>
