@@ -157,9 +157,9 @@
 
       (let [s1 (->> s
                     (clear-packet-loss)
-                    (step 10)
+                    (step 80)
                     (until-empty)
-                    (step 10)
+                    (step 80)
                     (until-empty))]
         (is (= '(1 1 1) (fields-by-id s1 :last-applied)))
         (is (= '(1 1 1) (fields-by-id s1 :commit-index)))
@@ -211,12 +211,12 @@
   (testing "shouldn't write the same log entry over if the same one is sent"
     (let [s (->> (test-cluster 3)
                  (until-empty)
-                 (add-packet-loss 1 0)
+                 (add-packet-loss 0 1)
                  (write {:a "a"})
                  (until-empty)
                  (step 10)
                  (until-empty)
                  (step 10)
                  (until-empty))]
-      (is (= '(1 1 1) (map count (fields-by-id s :log))))
+      (is (= '(1 0 1) (map count (fields-by-id s :log))))
       (is (= '({:a "a"} {} {:a "a"}) (fields-by-id s :db))))))
