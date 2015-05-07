@@ -26,12 +26,12 @@
       (cluster/foreach-server connect)))
 
 (defn- stop-server [server]
-  (when-let [e (:event-loop server)]
-    (close! e))
-  (when-let [s (:server-socket server)]
-    (.close s))
   (doall
    (utils/mapf (:peer-sockets server) s/close!))
+  (when-let [s (:server-socket server)]
+    (.close s))
+  (when-let [e (:event-loop server)]
+    (close! e))
   (merge server {:event-loop nil :server-socket nil}))
 
 (defn- stop [state]

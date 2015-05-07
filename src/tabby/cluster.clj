@@ -87,11 +87,12 @@
 
 (defn until-empty [cluster]
   (loop [c (step 0 cluster)]
-    (if (zero? (reduce + (for [[k v] ("servers" c)] (server/packet-count v))))
+    (if (zero? (reduce + (for [[k v] (:servers c)] (server/packet-count v))))
       c
       (recur (step 0 c)))))
 
 (defprotocol Cluster
+  "cluster methods (test and repl)"
   (init-cluster [this num])
   (start-cluster [this])
   (stop-cluster [this])

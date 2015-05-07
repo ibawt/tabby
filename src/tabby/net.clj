@@ -8,7 +8,6 @@
             [manifold.deferred :as d]
             [clojure.core.async :as a]
             [clojure.tools.logging :refer :all]
-            [clojure.tools.namespace.repl :refer [refresh]]
             [tabby.server :as server]
             [tabby.cluster :as cluster]))
 
@@ -63,7 +62,7 @@
                                       (a/>! (:rx-chan @state) (merge msg {:client-id client-index})))
                                     (d/recur))))))))))
 
-(defn- now
+(definline ^:private now
   "current time in ms"
   []
   (System/currentTimeMillis))
@@ -82,7 +81,9 @@
     (d/let-flow [_ (s/put! socket {:src (:id @state) :type :peering-handshake})]
                 (swap! state assoc-in [:peer-sockets peer] socket))))
 
-(defn- send-pkt [state pkt]
+(defn- send-pkt
+  "TODO: this should be more lazy and less swappy"
+  [state pkt]
   (when-let [peer (:dst pkt)]
     (when-not (get-in @state [:peer-sockets peer])
       @(connect-to-peer state peer))

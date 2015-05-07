@@ -42,7 +42,7 @@
   (update-in state [:next-timeout] mapf - dt))
 
 (defn- update-peer-timeout [state peer]
-  (update-in state [:next-timeout peer] + 10))
+  (assoc-in state [:next-timeout peer] 75)) ; TODO: this shouldn't be so high
 
 (defn- send-peer-update [state peer]
   (transmit state (if (> (last-log-index state) (get (:match-index state) peer))
