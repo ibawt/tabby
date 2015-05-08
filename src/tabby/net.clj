@@ -104,7 +104,6 @@
            (server/update dt (utils/update s :rx-queue conj pkt))))
   true)
 
-
 (defn event-loop-no-timeout [state]
   (let [stop (a/chan)]
     (a/go-loop []

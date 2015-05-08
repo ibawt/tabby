@@ -1,5 +1,6 @@
 (ns user
   (:require [tabby.server :as server]
+            [tabby.client :as client]
             [tabby.cluster :as cluster]
             [tabby.local-net :as local-net]
             [clojure.tools.namespace.repl :refer [refresh]]))
@@ -8,6 +9,8 @@
   (partial local-net/create-network-cluster 10 8090))
 
 (def cluster (cluster-maker))
+
+(def klient nil)
 
 (defmacro setc [& body]
   `(alter-var-root #'cluster
@@ -36,4 +39,10 @@
 
 (defn reset []
   (stop)
+  (alter-var-root #'cluster (fn [s] (cluster-maker)))
   (refresh :after 'user/go))
+
+(defn client-connect []
+  (alter-var-root #'klient (fn [k] (client/connect "127.0.0.1" 8090))))
+
+

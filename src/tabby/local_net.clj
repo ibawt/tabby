@@ -4,7 +4,9 @@
             [tabby.server :as server]
             [clojure.core.async :refer [close!]]
             [manifold.stream :as s]
-            [tabby.cluster :as cluster]))
+            [tabby.cluster :as cluster]
+            [clojure.tools.logging :refer :all]))
+
 
 (defn- connect-to-peers [server]
   (doseq [peer (:peers @server)]
@@ -29,8 +31,10 @@
   (doall
    (utils/mapf (:peer-sockets server) s/close!))
   (when-let [s (:server-socket server)]
+    (info "stopping server socket: " (:id server))
     (.close s))
   (when-let [e (:event-loop server)]
+    (info "stopping event loop: " (:id server))
     (close! e))
   (merge server {:event-loop nil :server-socket nil}))
 
