@@ -1,6 +1,7 @@
 (ns tabby.server
   (:require [tabby.utils :as utils]
             [tabby.log :refer :all]
+            [tabby.client-state :as cs]
             [tabby.leader :refer :all]
             [tabby.follower :refer :all]
             [clojure.tools.logging :refer :all]
@@ -17,11 +18,12 @@
   "if supplied term < current term, set current term to term
   and convert to follower"
   [state params]
-  (if (< (:current-term state) (:term params))
-    (-> state
-     (assoc :current-term (:term params))
-     (become-follower))
-    state))
+  (if (and (:term params) (< (:current-term state) (:term params)))
+    (become-follower (assoc state :current-term (:term params))
+                     (:leader-id params))
+    (if (:leader-id params)
+      (assoc state :leader-id (:leader-id params))
+      state)))
 
 (defn- apply-commit-index [state]
   (if (> (:commit-index state) (:last-applied state))
@@ -32,8 +34,11 @@
     state))
 
 (defn- redirect-to-leader [state p]
+  (warn (:id state) "redirecting to leader")
+  (warn "client-dst: " (:client-id p))
   (utils/transmit state {:client-dst (:client-id p)
-                   :leader-id (:leader-id state)}))
+                         :type :redirect
+                         :leader-id (:leader-id state)}))
 
 (defn- handle-get [state p]
   (if (utils/leader? state)
@@ -42,7 +47,10 @@
 
 (defn- handle-set [state p]
   (if (utils/leader? state)
-    (write state (select-keys p [:key :value]))
+    (utils/transmit
+     (write state (select-keys p [:key :value]))
+     {:client-dst (:client-id p)
+      :value :ok})
     (redirect-to-leader state p)))
 
 (defn- handle-packet [state]
@@ -70,15 +78,13 @@
    (utils/if-not-leader? check-election-timeout)
    (process-rx-packets)
    (utils/if-leader? check-backlog dt)
-   (utils/if-leader? check-reads)))
+   (utils/if-leader? cs/check-clients)))
 
 (defn set-peers [state peers]
   (assoc state :peers peers))
 
 (defn handle-write [state kv]
-  (if (utils/leader? state)
-    (write state kv)
-    (redirect-to-leader state)))
+  (handle-set state {:key (first (keys kv)) :value (first (vals kv))}))
 
 (defn create-server [id]
   {:current-term 0
@@ -91,5 +97,5 @@
    :type :follower
    :election-timeout (utils/random-election-timeout)
    :peers []
-   :clients []
+   :clients {}
    :db {}})

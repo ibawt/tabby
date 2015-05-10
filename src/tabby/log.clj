@@ -41,5 +41,8 @@
       (= (get-log-term state p-index) p-term)))
 
 (defn apply-entry [{log :log index :last-applied} db]
-  (let [cmd (:cmd (get log index))]
-    (merge db cmd)))
+  (let [{key :key value :value} (:cmd (get log index))]
+    (merge db {key value})))
+
+(defn read-value [state key]
+  (get (:db state) key))

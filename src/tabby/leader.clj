@@ -1,6 +1,7 @@
 (ns tabby.leader
   (:require [tabby.log :refer :all]
             [tabby.utils :refer :all]
+            [tabby.client-state :as cs]
             [clojure.tools.logging :refer :all]))
 
 (defn- heart-beat-timeout []
@@ -33,7 +34,8 @@
             :leader-commit (:commit-index state)}}))
 
 (defn- broadcast-heartbeat [state]
-  (foreach-peer state (comp transmit make-heart-beat-pkt)))
+  (foreach-peer state (fn [s p]
+                        (transmit s (make-heart-beat-pkt s p)))))
 
 (defn- peer-timeout? [state peer]
   (<= (get (:next-timeout state) peer) 0))
@@ -61,7 +63,7 @@
 (defn- check-commit-index [state]
   (let [f (frequencies (vals (:match-index state)))
         [index c] (first f)]
-    (if (and (quorum? state (inc c)) (> index (:commit-index state)))
+    (if (and (quorum? (count (:peers state)) (inc c)) (> index (:commit-index state)))
       (assoc state :commit-index index)
       state)))
 
@@ -79,43 +81,22 @@
    (assoc :match-index (make-peer-map state (constantly 0)))
    (broadcast-heart-beat)))
 
-(defn inc-hb-counts
-  [state p]
-  (update-in state [:clients] #(map (fn [client]
-                                      (update-in client [:hb-count] conj (:src p))) %)))
-
-(defn check-read
-  [state client index]
-  (if (quorum? state (count (:hb-count client)))
-    (transmit state {:src (:id state) :client-dst index :body {:foo "bar"}})
-    state))
-
-(defn check-reads
-  [state]
-  (loop [s state
-         index 0
-         c (:clients state)]
-    (if (empty? c)
-      s
-      (recur (check-read state (first c) index)
-             (inc index)
-             (rest c)))))
-
 (defn handle-append-entries-response [state p]
   (if (pos? (get-in p [:body :count])) ; heart beat response
     (-> state
         (update-match-and-next p)
         (check-commit-index))
-    (inc-hb-counts state p)))
+    (update-in state [:clients] cs/inc-heartbeats (:src p))))
 
 (defn client-read
-  [state {client-id :client-id key :key uuid :uuid}]
-  (if (= uuid (get-in state [:clients client-id :last-uuid]))
-    (get-in state [:clients client-id :last-response])
-    (-> (update-in state [:clients client-id] merge {:hb-count #{}
-                                                     :key key
-                                                     :uuid uuid})
-        (broadcast-heart-beat))))
+  [state pkt]
+  (let [[s response] (cs/add-read state pkt)]
+    (if (= :broadcast-heart-beat response)
+      (do (warn "broadcasting response")
+          (broadcast-heartbeat s))
+      (do
+        (warn "transmitting old response")
+        (transmit s response)))))
 
 (defn write [state kv]
   (->

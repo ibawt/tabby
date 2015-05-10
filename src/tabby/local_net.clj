@@ -7,14 +7,12 @@
             [tabby.cluster :as cluster]
             [clojure.tools.logging :refer :all]))
 
-
 (defn- connect-to-peers [server]
   (doseq [peer (:peers @server)]
     (net/connect-to-peer server peer))
   server)
 
 (defn- start-server [server & rest]
-  (println "starting server on port: " (:port server))
   (net/create-server server (:port server)))
 
 (defn- connect [server]
@@ -40,7 +38,9 @@
 
 (defn- stop [state]
   (cluster/foreach-server state (fn [server]
-                                  (swap! server stop-server))))
+                                  (if (instance? clojure.lang.Atom server)
+                                    (swap! server stop-server)
+                                    server))))
 
 (defn- step [state dt]
   (cluster/foreach-server state swap! (partial server/update dt)))
