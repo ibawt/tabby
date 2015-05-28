@@ -31,18 +31,24 @@
 
 (defn foreach-peer
   "calls f with current state, the peer and etc."
-  [state f & args]
-  (loop [s state
-         p (:peers state)]
-    (if (empty? p) s
-        (recur (apply f s (first p) args)
-               (rest p)))))
+  ([state f]
+   (loop [s state
+          p (:peers state)]
+     (if (empty? p) s
+         (recur (f s (first p))
+                (rest p)))))
+  ([state f & args]
+   (loop [s state
+          p (:peers state)]
+     (if (empty? p) s
+         (recur (apply f s (first p) args)
+                (rest p))))))
 
 (defn transmit [state request]
   (update state :tx-queue conj request))
 
-(defn quorum? [state c]
-  (>= c (inc (/ (count (:peers state)) 2))))
+(defn quorum? [peers c]
+  (>= c (inc (/ peers 2))))
 
 (defn leader? [state]
   (= :leader (:type state)))
@@ -61,3 +67,6 @@
 
 (defn if-not-leader? [state f & args]
   (if-not (leader? state) (apply f state args) state))
+
+(defn gen-uuid []
+  (str (java.util.UUID/randomUUID)))

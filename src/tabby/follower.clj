@@ -54,9 +54,10 @@
 
 (defn become-follower
   "called from the packet queue if current-term < supplied term"
-  [state]
-  (warn (:id state) " becoming follower")
+  [state leader-id]
+  (info (:id state) " becoming follower, leader-id: " leader-id)
   (-> state
       (assoc :election-timeout (random-election-timeout))
+      (assoc :leader-id leader-id)
       (assoc :type :follower)
       (assoc :voted-for nil)))

@@ -88,26 +88,6 @@
                  (step-times 0 5))]
       (is (= {2 0 1 0} (:match-index (srv s 0))))))
 
-  (testing "step 6 - system write"
-    (let [s (->> (test-cluster 3)
-                 (until-empty)
-                 (write {:a "a"}))]
-
-      (is (= '({:dst 1 :src 0
-                :type :append-entries
-                :body {:term 1 :leader-id 0
-                       :prev-log-index 0
-                       :prev-log-term 0
-                       :entries [{:term 1 :cmd {:a "a"}}]
-                       :leader-commit 0}}
-               {:dst 2 :src 0
-                :type :append-entries
-                :body {:term 1 :leader-id 0
-                       :prev-log-index 0
-                       :prev-log-term 0
-                       :entries [{:term 1 :cmd {:a "a"}}]
-                       :leader-commit 0}})
-             (:tx-queue (srv s 0))))))
 
   (testing "step 7 wait for commit index"
     (let [s (->> (test-cluster 3)

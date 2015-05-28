@@ -6,7 +6,7 @@
   :dependencies [[org.clojure/clojure "1.6.0"]
                  [aleph "0.4.0"]
                  [gloss "0.2.5"]
-                 [org.clojure/tools.namespace "0.2.7"]
+                 [org.clojure/tools.namespace "0.2.10"]
                  [org.clojure/core.async "0.1.346.0-17112a-alpha"]
                  [log4j "1.2.17" :exclusions [javax.mail/mail
                                               javax.jms/jms

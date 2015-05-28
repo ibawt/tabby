@@ -2,6 +2,7 @@
   (:require [tabby.utils :as utils]
             [clojure.edn :as edn]
             [gloss.core :as gloss]
+            [tabby.client-state :as cs]
             [gloss.io :as io]
             [aleph.tcp :as tcp]
             [manifold.stream :as s]
@@ -10,8 +11,6 @@
             [clojure.tools.logging :refer :all]
             [tabby.server :as server]
             [tabby.cluster :as cluster]))
-
-(declare client)
 
 (def ^:private protocol
   (gloss/compile-frame
@@ -31,6 +30,11 @@
     (s/splice
      out
      (io/decode-stream s protocol))))
+
+(defn client
+  [host port]
+  (d/chain (tcp/client {:host host, :port port})
+           (partial wrap-duplex-stream protocol)))
 
 (defn- connection-handler
   "incoming connection handler"
@@ -52,15 +56,19 @@
                                 (s/put! s :pong))
                               (d/recur)))))
 
-       :client-handshake (let [client-index
-                               (count (:clients (swap! state update-in [:clients] conj {:socket s})))]
+       :client-handshake (let [client-index (utils/gen-uuid)]
+                           (swap! state
+                                  (fn [ss]
+                                    (update-in ss [:clients] cs/create-client client-index s)))
                            (d/loop []
                              (-> (s/take! s ::none)
                                  (d/chain
                                   (fn [msg]
-                                    (a/go
-                                      (a/>! (:rx-chan @state) (merge msg {:client-id client-index})))
-                                    (d/recur))))))))))
+                                    (when-not (= ::none msg)
+                                      (a/go
+                                        (a/>! (:rx-chan @state)
+                                              (merge msg {:client-id client-index})))
+                                      (d/recur)))))))))))
 
 (definline ^:private now
   "current time in ms"
@@ -79,7 +87,7 @@
   [state peer]
   (let [socket @(client "localhost" (+ 8090 peer))]
     (d/let-flow [_ (s/put! socket {:src (:id @state) :type :peering-handshake})]
-                (swap! state assoc-in [:peer-sockets peer] socket))))
+               (swap! state assoc-in [:peer-sockets peer] socket))))
 
 (defn- send-pkt
   "TODO: this should be more lazy and less swappy"
@@ -126,11 +134,6 @@
         (recur (now))
         :stopped))
     stop))
-
-(defn client
-  [host port]
-  (d/chain (tcp/client {:host host, :port port})
-           (partial wrap-duplex-stream protocol)))
 
 (defn start-server
   [server port]
