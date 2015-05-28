@@ -1,72 +1,46 @@
 (ns tabby.client
   (:require [tabby.utils :as utils]
-            [aleph.tcp :as tcp]
             [manifold.stream :as s]
             [manifold.deferred :as d]
-            [clojure.core.async :as a]
             [tabby.net :as net]
             [tabby.utils :as utils]
-            [clojure.tools.logging :refer :all]))
+            [clojure.tools.logging :refer [info warn]]))
 
 (defn- close-socket [client]
-  (if-let [s (:socket client)]
-    (do (s/close! s)
+  (if (:socket client)
+    (do (s/close! (:socket client))
         (assoc client :socket nil))
     client))
 
-(defn set-leader [this id]
-  (warn "setting leader to: " id)
+(defn set-leader [this host port]
   (-> (close-socket this)
-      (assoc :leader (get-in this [:servers id]))))
+      (assoc :leader {:host host :port port})))
 
 (defn- connect-to-leader
   "blocks"
   [client]
-  (warn "connect to leader")
   (let [socket @(net/client (get-in client [:leader :host])
                             (get-in client [:leader :port]))]
     (s/put! socket {:type :client-handshake})
     (assoc client :socket socket)))
 
-(defn- get-value-socket
-  [client key]
-  (d/loop [c client
-           times 0]
-    (if (and (< times 5) (not (:socket c)))
-      (d/recur (connect-to-leader c) (inc times))
-      (do
-        (s/put! (:socket c) {:type :get :key key :uuid (utils/gen-uuid)})
-        (-> (s/take! (:socket c) ::none)
-            (d/chain
-             (fn [msg]
-               (when-not (= ::none msg)
-                 (if (= :redirect (:type msg))
-                   (d/recur (set-leader c (:leader-id msg)) (inc times))
-                   [c (:value msg)])))))))))
-
-(defn- send-pkt [client pkt]
-  (d/loop [c client]
+(defn- send-pkt
+  "this will block"
+  [client pkt]
+  (loop [c client]
     (if-not (:socket c)
-      (d/recur (connect-to-leader c))
+      (recur (connect-to-leader c))
       (do
-        (s/put! (:socket c) pkt)
-        (-> (s/take! (:socket c) ::none)
-            (d/chain
-             (fn [msg]
-               (warn "msg: " msg)
-               (when-not (= ::none msg)
-                 (if (= :redirect (:type msg))
-                   (d/recur (set-leader c (:leader-id msg)))
-                   [c (:value msg)])))))))))
-
-(defn- set-or-create-socket
-  [client key value]
-  (send-pkt client {:type :set :value value :key key
-                    :uuid (utils/gen-uuid)}))
+        @(s/put! (:socket c) pkt)
+        (let [msg @(s/take! (:socket c) {:value :empty})]
+          (if-not (= :redirect (:type msg))
+            [c (:value msg)]
+            (recur (set-leader c (:hostname msg) (:port msg)))))))))
 
 (defprotocol Client
   (close [this])
   (get-value [this key])
+  (compare-and-swap [this key new old])
   (set-or-create [this key value]))
 
 (defrecord LocalClient
@@ -74,9 +48,13 @@
   Client
   (close [this])
   (get-value [this key]
-    (get-value-socket this key))
+    (send-pkt this {:type :get :key key :uuid (utils/gen-uuid)}))
+  (compare-and-swap [this key new old]
+    (send-pkt this {:type :cas :key key :new new :old old
+                      :uuid (utils/gen-uuid)}))
   (set-or-create [this key value]
-    (set-or-create-socket this key value)))
+    (send-pkt this {:type :set :value value :key key
+                      :uuid (utils/gen-uuid)})))
 
 (defn make-local-client [servers]
-  (map->LocalClient {:servers servers :leader (first (shuffle servers))}))
+  (map->LocalClient {:servers servers :leader (first servers)}))

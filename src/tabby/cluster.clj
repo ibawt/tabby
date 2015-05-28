@@ -1,24 +1,28 @@
 (ns tabby.cluster
   (:require [tabby.server :as server]
+            [clojure.tools.logging :refer :all]
             [tabby.utils :refer :all]))
 
 ;;; Testing and Development things for cluster testing
 (defn foreach-server
   ([state f]
-   (update state :servers mapf f))
+   (update-in state [:servers] mapf f))
 
   ([state f & args]
-   (update state :servers mapf f args)))
+   (update-in state [:servers] mapf f args)))
 
 (defn- find-peers [id servers]
-  (vec (keys (filterv (fn [[k v]] (not= k id)) servers))))
+  (into {} (map (fn [[k v]]
+                  [k (select-keys v [:hostname :port])]) (filterv (fn [[k v]] (not= k id)) servers))))
 
 (defn- set-peers [servers]
   (mapf servers (fn [v]
                   (server/set-peers v (find-peers (:id v) servers)))))
 
-(defn create [num]
-  (let [servers (reduce #(merge %1 {%2 (server/create-server %2)}) {} (range num))]
+(defn create [baseport num]
+  (let [servers (reduce #(merge %1 {(str %2 ".localnet:" %2)
+                                    (merge (server/create-server (str %2 ".localnet:" %2))
+                                           {:hostname "localhost" :port (+ baseport %2)})}) {} (range num))]
     {:time 0
      :servers (set-peers servers)}))
 
@@ -46,7 +50,7 @@
                (update-in v [:rx-queue] concat (collect-packets system (:id v))))))
 
 (defn clear-tx-packets [system]
-  (update system :servers mapf assoc :tx-queue '()))
+  (update-in system [:servers] mapf assoc :tx-queue '()))
 
 (defn pump-transmit-queues [system]
   (-> system
@@ -56,8 +60,8 @@
 (defn step [dt system]
   (-> system
       (pump-transmit-queues)
-      (update :servers mapf (partial server/update dt))
-      (update :time + dt)))
+      (update-in [:servers] mapf (partial server/update-state dt))
+      (update-in [:time] + dt)))
 
 (defn step-times [dt times system]
   (loop [s system

@@ -2,10 +2,10 @@
   (:require [clojure.test :refer :all]
             [tabby.candidate :refer :all]))
 
-(def state
+(def ^:private state
   {:last-applied 0,
    :db {},
-   :peers [1 2],
+   :peers {1 {} 2 {}},
    :tx-queue '(),
    :type :follower,
    :id 0,
@@ -15,10 +15,13 @@
    :current-term 0,
    :log []})
 
+(defn- make-test-peer-map [n]
+  (into {} (for [n (range (dec 4))] [(inc n) {}])))
+
 (defn- make-state [n]
   (-> state
       (become-candidate)
-      (assoc :peers (range 1 n))
+      (assoc :peers (make-test-peer-map n))
       (assoc :tx-queue '())))
 
 (defn- send-rvp-resp [state from-id granted?]

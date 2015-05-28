@@ -5,7 +5,7 @@
             [clojure.tools.logging :refer :all]))
 
 (defn- heart-beat-timeout []
-  (inc (rand-int 9)))
+  (+ (rand-int 15) 15))
 
 (defn- make-append-log-pkt [state peer]
   (let [p-index (dec (get (:next-index state) peer))
@@ -34,19 +34,23 @@
             :leader-commit (:commit-index state)}}))
 
 (defn- broadcast-heartbeat [state]
-  (foreach-peer state (fn [s p]
+  (foreach-peer state (fn [s [p v]]
                         (transmit s (make-heart-beat-pkt s p)))))
 
-(defn- peer-timeout? [state peer]
+(defn- peer-timeout?
+  "checks if the peer is ready to send another heartbeat"
+  [state peer]
   (<= (get (:next-timeout state) peer) 0))
 
 (defn- apply-peer-timeouts [state dt]
   (update-in state [:next-timeout] mapf - dt))
 
-(defn- update-peer-timeout [state peer]
-  (assoc-in state [:next-timeout peer] 75)) ; TODO: this shouldn't be so high
+(def ^:private peer-next-timeout 75)
 
-(defn- send-peer-update [state peer]
+(defn- update-peer-timeout [state peer]
+  (assoc-in state [:next-timeout peer] peer-next-timeout))
+
+(defn- send-peer-update [state [peer value]]
   (transmit state (if (> (last-log-index state) (get (:match-index state) peer))
                     (make-append-log-pkt state peer)
                     (make-heart-beat-pkt state peer))))
@@ -58,35 +62,38 @@
   (let [s (if-not (:success (:body p))
             (update-in state [:next-index (:src p)] dec)
             state)]
-    (assoc-in s [:match-index (:src p)] (get (:next-index state) (:src p)))))
+    (assoc-in s [:match-index (:src p)]
+              (get (:next-index state) (:src p)))))
+
+(def ^:private highest-match-index
+  "Returns frequencies of all of the match indices and the count,
+   sorted descending."
+  (comp first reverse frequencies vals :match-index))
 
 (defn- check-commit-index [state]
-  (let [f (frequencies (vals (:match-index state)))
-        [index c] (first f)]
-    (if (and (quorum? (count (:peers state)) (inc c)) (> index (:commit-index state)))
+  (let [[index c] (highest-match-index state)]
+    (if (and (quorum? (count (:peers state)) (inc c))
+             (> index (:commit-index state)))
       (assoc state :commit-index index)
       state)))
 
 (defn- make-peer-map [state f]
-  (into {} (for [p (:peers state)]
+  (into {} (for [[p _] (:peers state)]
              [p (f)])))
 
 (defn become-leader [state]
-  (warn (:id state) " becoming leader")
-  (->
-   state
-   (assoc :type :leader)
-   (assoc :next-timeout (make-peer-map state heart-beat-timeout))
-   (assoc :next-index (make-peer-map state  #(inc (count (:log state)))))
-   (assoc :match-index (make-peer-map state (constantly 0)))
-   (broadcast-heart-beat)))
+  (warn (:id state) " ecoming leader")
+  (broadcast-heart-beat
+   (merge state
+          {:type :leader
+           :next-timeout (make-peer-map state heart-beat-timeout)
+           :next-index (make-peer-map state  #(inc (count (:log state))))
+           :match-index (make-peer-map state (constantly 0))})))
 
 (defn handle-append-entries-response [state p]
   (if (pos? (get-in p [:body :count])) ; heart beat response
-    (-> state
-        (update-match-and-next p)
-        (check-commit-index))
-    (update-in state [:clients] cs/inc-heartbeats (:src p))))
+    (check-commit-index (update-match-and-next state p))
+    (update state :clients cs/inc-heartbeats (:src p))))
 
 (defn client-read
   [state pkt]
@@ -101,7 +108,7 @@
 (defn write [state kv]
   (->
    state
-   (update-in [:log] conj {:term (:current-term state) :cmd kv})
+   (update :log conj {:term (:current-term state) :cmd kv})
    (broadcast-heart-beat)))
 
 (defn check-backlog
@@ -109,9 +116,10 @@
   an internal throttle"
   [state dt]
   (foreach-peer (apply-peer-timeouts state dt)
-                (fn [s p]
+                (fn [s [p v]]
                   (if (peer-timeout? s p)
-                    (-> s
-                        (send-peer-update p)
-                        (update-peer-timeout p))
+                    (do
+                      (-> s
+                         (send-peer-update [p])
+                         (update-peer-timeout p)))
                     s))))

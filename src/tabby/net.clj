@@ -4,6 +4,7 @@
             [gloss.core :as gloss]
             [tabby.client-state :as cs]
             [gloss.io :as io]
+            [tabby.utils :as u]
             [aleph.tcp :as tcp]
             [manifold.stream :as s]
             [manifold.deferred :as d]
@@ -44,30 +45,30 @@
      [handshake (s/take! s)]
      (condp = (:type handshake)
        :peering-handshake (do
-                            (when-not (get-in @state [:peer-sockets (:src handshake)])
-                              (swap! state assoc-in [:peer-sockets (:src handshake)] s))
+                            (when-not (get-in @state [:peers (:src handshake) :socket])
+                              (swap! state assoc-in [:peers (:src handshake) :socket] s))
                             (s/connect s (:rx-chan @state)))
 
        :table-tennis (d/loop []
                        (-> (s/take! s ::none)
                            (d/chain
                             (fn [msg]
-                              (when (= :ping msg)
-                                (s/put! s :pong))
-                              (d/recur)))))
+                              (when-not (= ::none msg)
+                                (when (= :ping msg)
+                                  (s/put! s :pong))
+                                (d/recur))))))
 
        :client-handshake (let [client-index (utils/gen-uuid)]
-                           (swap! state
-                                  (fn [ss]
-                                    (update-in ss [:clients] cs/create-client client-index s)))
+                           (info (:id @state) "client connected")
+                           (swap! state update-in [:clients] cs/create-client client-index s)
                            (d/loop []
                              (-> (s/take! s ::none)
                                  (d/chain
                                   (fn [msg]
                                     (when-not (= ::none msg)
                                       (a/go
-                                        (a/>! (:rx-chan @state)
-                                              (merge msg {:client-id client-index})))
+                                         (a/>! (:rx-chan @state)
+                                              (assoc msg :client-id client-index)))
                                       (d/recur)))))))))))
 
 (definline ^:private now
@@ -78,24 +79,24 @@
 (defn- handle-timeout
   "timeout of dt seconds, just run the update"
   [state dt]
-  (swap! state (fn [s] (server/update dt s)))
+  (swap! state (fn [s] (server/update-state dt s)))
   true)
 
 (defn connect-to-peer
   "when the peer socket isn't present connect to it
    (will block)"
-  [state peer]
-  (let [socket @(client "localhost" (+ 8090 peer))]
+  [state [id peer]]
+  (let [socket @(client (:hostname peer) (:port peer))]
     (d/let-flow [_ (s/put! socket {:src (:id @state) :type :peering-handshake})]
-               (swap! state assoc-in [:peer-sockets peer] socket))))
+               (swap! state assoc-in [:peers id :socket] socket))))
 
 (defn- send-pkt
   "TODO: this should be more lazy and less swappy"
   [state pkt]
-  (when-let [peer (:dst pkt)]
-    (when-not (get-in @state [:peer-sockets peer])
-      @(connect-to-peer state peer))
-    (s/put! (get-in @state [:peer-sockets peer]) pkt))
+  (when-let [peer-id (:dst pkt)]
+    (when-not (get-in @state [:peers peer-id :socket])
+      @(connect-to-peer state peer-id))
+    (s/put! (get-in @state [:peers peer-id :socket]) pkt))
   (when-let [client (:client-dst pkt)]
     (s/put! (get-in @state [:clients client :socket]) pkt))
   true)
@@ -109,19 +110,8 @@
 (defn- handle-rx-pkt [state dt pkt]
   (swap! state
          (fn [s]
-           (server/update dt (utils/update s :rx-queue conj pkt))))
+           (server/update-state dt (update-in s [:rx-queue] conj pkt))))
   true)
-
-(defn event-loop-no-timeout [state]
-  (let [stop (a/chan)]
-    (a/go-loop []
-      (transmit state)
-      (if (a/alt!
-            stop false
-            (:rx-chan @state) ([v] (if v (handle-rx-pkt state 0) false)))
-        (recur)
-        :stopped))
-    stop))
 
 (defn event-loop [state {timeout :timeout}]
   (let [stop (a/chan)]
@@ -137,12 +127,14 @@
 
 (defn start-server
   [server port]
+  (info "starting server on port: " port)
   (tcp/start-server
    (fn [s info]
      ((connection-handler server) (wrap-duplex-stream protocol s) info))
    {:port port}))
 
 (defn create-server [server port]
+  (info "creating server: " (:id server) " on port: " port)
   (let [s (atom server)
         socket (start-server s port)]
     (swap! s merge {:server-socket socket

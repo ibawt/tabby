@@ -1,11 +1,5 @@
 (ns tabby.utils)
 
-(defmacro update
-  ([m k f]
-   `(update-in ~m [~k] ~f))
-  ([m k f & args]
-   `(update-in ~m [~k] ~f ~@args)))
-
 (defmacro dbg [& body]
   `(let [x# ~body]
      (println (quote ~body) "=" x#) x#))
@@ -33,21 +27,21 @@
   "calls f with current state, the peer and etc."
   ([state f]
    (loop [s state
-          p (:peers state)]
+          p (seq (:peers state))]
      (if (empty? p) s
          (recur (f s (first p))
                 (rest p)))))
   ([state f & args]
    (loop [s state
-          p (:peers state)]
+          p (seq (:peers state))]
      (if (empty? p) s
          (recur (apply f s (first p) args)
                 (rest p))))))
 
 (defn transmit [state request]
-  (update state :tx-queue conj request))
+  (update-in state [:tx-queue] conj request))
 
-(defn quorum? [peers c]
+(defn quorum? [^long peers ^long c]
   (>= c (inc (/ peers 2))))
 
 (defn leader? [state]

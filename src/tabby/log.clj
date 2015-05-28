@@ -22,8 +22,9 @@
     (:term (get-log-at state idx))))
 
 (defn- apply-log [state entries]
-  (if (pos? (count entries))
-    (update-in state [:log] #(apply conj % entries))
+  (if (seq entries)
+    (update state :log (fn [log]
+                         (into [] (concat log entries))))
     state))
 
 (defn append-log [state params]

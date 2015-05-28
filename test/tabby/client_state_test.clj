@@ -72,8 +72,8 @@
                           :pending-reads {}}
                       :b {:history {:0 {:hb-count #{1,2} :key :foo :value "foo"}}
                           :pending-reads {}}}
-            :tx-queue '({:client-dst :a :uuid :0 :value "foo"}
-                        {:client-dst :b :uuid :0 :value "foo"})}
+            :tx-queue '({:client-dst :b :uuid :0 :value "foo"}
+                        {:client-dst :a :uuid :0 :value "foo"})}
            (check-clients {:peers [0 1 2]
                            :db {:foo "foo"}
                            :clients {:a {:pending-reads{:0 {:hb-count #{1,2} :key :foo}}}
