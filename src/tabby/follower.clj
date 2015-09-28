@@ -21,7 +21,7 @@
 ;;; TODO: refactor this shit show
 (defn- append-entries [state params]
   (let [r {:term (:current-term state)
-           :count (count (:entries params)) ; this should be replaced with the actual number
+           :count (count (:entries params))
            :success (and (valid-term? state params)
                          (prev-log-term-equals? state params))}]
     {:state (if (:success r) (append-log state params) state)

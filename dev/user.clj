@@ -12,9 +12,13 @@
 
 (def cluster (cluster-maker))
 
-(def klient (client/make-local-client [{:host "127.0.0.1" :port 8090}
-                                       {:host "127.0.0.1" :port 8091}
-                                       {:host "127.0.0.1" :port 8092}]))
+(defn- local-client []
+  (client/make-local-client [{:host "127.0.0.1" :port 8090}
+                             {:host "127.0.0.1" :port 8091}
+                             {:host "127.0.0.1" :port 8092}]))
+
+(def klient (local-client))
+
 (defn unatom [x]
   (if (instance? clojure.lang.Atom x)
     @x
@@ -47,22 +51,32 @@
   :ready)
 
 (defn reset []
-  (stop)
-  (alter-var-root #'cluster (fn [s] (cluster-maker)))
-  (refresh :after 'user/go))
+  (try
+    (stop)
+    (alter-var-root #'cluster (fn [s] (cluster-maker)))
+    (alter-var-root #'klient (fn [s] (local-client)))
+    (refresh :after 'user/go)
+    (catch Exception e
+      (warn e "caught exception in reset!!!"))))
 
 (defn set-value [key value]
-  (let [[kk value] @(utils/dbg client/set-or-create klient key value)]
-    (alter-var-root #'klient (constantly kk))
+  (let [[kk value] (client/set-or-create klient key value)]
+    (when kk
+      (alter-var-root #'klient (constantly kk)))
     value))
 
 (defn get-value [key]
-  (let [[kk value] @(client/get-value klient key)]
+  (let [[kk value] (client/get-value klient key)]
     (alter-var-root #'klient (constantly kk))
     value))
 
 (defn server-at [key]
   (unatom (get (:servers cluster) key)))
+
+(defn types []
+  (map (fn [x]
+         (-> (unatom x)
+             (select-keys [:type :id]))) (vals (:servers cluster))))
 
 (defn find-leader []
   (reduce-kv (fn [_ k v]

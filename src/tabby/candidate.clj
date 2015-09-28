@@ -1,8 +1,8 @@
 (ns tabby.candidate
-  (:require [tabby.utils :refer :all]
-            [tabby.leader :refer :all]
-            [tabby.log :refer :all]
-            [clojure.tools.logging :refer :all]))
+  (:require [tabby.utils :as u]
+            [tabby.leader :as l]
+            [tabby.log :as log]
+            [clojure.tools.logging :refer [warn info]]))
 
 (defn- make-request-vote-pkt [state peer]
   {:dst peer
@@ -11,22 +11,21 @@
    :body {:term (:current-term state)
           :candidate-id (:id state)
           :prev-log-index (count (:log state))
-          :prev-log-term (get-log-term state (last-log-index state))}})
+          :prev-log-term (log/get-log-term state (log/last-log-index state))}})
 
 (defn- broadcast-request-vote [state]
-  (foreach-peer state
-                (fn [s p]
-                  (transmit s (make-request-vote-pkt s p)))))
+  (u/foreach-peer state
+                (fn [s [p v]]
+                  (u/transmit s (make-request-vote-pkt s p)))))
 
 (defn become-candidate [state]
-  (warn (:id state) " becoming candidate")
-  (-> state
-      (assoc :type :candidate)
+  (info (:id state) " becoming candidate")
+  (-> (assoc state :type :candidate)
       (assoc :voted-for (:id state))
       (update-in [:current-term] inc)
-      (assoc :election-timeout (random-election-timeout))
-      (broadcast-request-vote)
-      (assoc :votes {(:id state) true})))
+      (assoc :election-timeout (u/random-election-timeout))
+      (assoc :votes {(:id state) true})
+      (broadcast-request-vote)))
 
 (defn handle-request-vote-response
   "response to a request to vote"
@@ -35,6 +34,6 @@
     state
     (let [s (assoc-in state [:votes (:src p)] (:vote-granted? (:body p)))
           c (count (filter identity (vals (:votes s))))]
-      (if (quorum? (count (:peers state)) c)
-        (become-leader s)
+      (if (u/quorum? (count (:peers state)) c)
+        (l/become-leader s)
         s))))

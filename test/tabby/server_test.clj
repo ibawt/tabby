@@ -12,5 +12,5 @@
       (is (= 42 (:id s)))
       (is (= 0 (:last-applied s)))
       (is (= :follower (:type s)))
-      (is (= [] (:peers s)))
+      (is (= {} (:peers s)))
       (is (= {} (:db s))))))

@@ -18,62 +18,78 @@
   "if supplied term < current term, set current term to term
   and convert to follower"
   [state params]
-  (if (and (:term params) (< (:current-term state) (:term params)))
-    (become-follower (assoc state :current-term (:term params))
-                     (:leader-id params))
-    (if (:leader-id params)
-      (assoc state :leader-id (:leader-id params))
-      state)))
+  (let [body (:body params)]
+    (if (or (and (:term body)
+                 (< (:current-term state) (:term body)))
+            (and (= :candidate (:type state))
+                 (= :append-entries (:type params))
+                 (<= (:current-term state) (:term body))))
+      (become-follower (assoc state :current-term (:term body))
+                       (:leader-id body))
+      (if (:leader-id body)
+        (assoc state :leader-id (:leader-id body))
+        state))))
 
 (defn- apply-commit-index [state]
   (if (> (:commit-index state) (:last-applied state))
     (->
      state
-     (utils/update :last-applied inc)
-     (utils/update :db (partial apply-entry state)))
+     (update-in [:last-applied] inc)
+     (update-in [:db] (partial apply-entry state)))
     state))
 
 (defn- redirect-to-leader [state p]
   (warn (:id state) "redirecting to leader")
-  (warn "client-dst: " (:client-id p))
   (utils/transmit state {:client-dst (:client-id p)
                          :type :redirect
+                         :hostname (get-in state [:peers (:leader-id state) :hostname])
+                         :port (get-in state [:peers (:leader-id state) :port])
                          :leader-id (:leader-id state)}))
 
+(defn- handle [f s p]
+  (if (utils/leader? s)
+    (f s p)
+    (redirect-to-leader s p)))
+
 (defn- handle-get [state p]
-  (if (utils/leader? state)
-    (client-read state p)
-    (redirect-to-leader state p)))
+  (client-read state p))
 
 (defn- handle-set [state p]
-  (if (utils/leader? state)
-    (utils/transmit
-     (write state (select-keys p [:key :value]))
-     {:client-dst (:client-id p)
-      :value :ok})
-    (redirect-to-leader state p)))
+  (utils/transmit
+   (write state (select-keys p [:key :value]))
+   {:client-dst (:client-id p)
+    :value :ok}))
+
+(defn- handle-cas [state p]
+  (if (= (read-value state (:key (:old p))) (:old p))
+    (write state (dissoc
+                  (assoc p :key (:key (:new p)) :value (:value (:new p)))
+                  :old :new))
+    ({:client-dst (:client-id p)
+      :type :fail})))
 
 (defn- handle-packet [state]
   (let [p (first (:rx-queue state))
-        s (check-term state (:body p))]
+        s (check-term state p)]
     (condp = (:type p)
-      :get (handle-get s p)
-      :set (handle-set s p)
+      :get (handle handle-get s p)
+      :set (handle handle-set s p)
+      :cas (handle handle-cas s p)
       :request-vote (handle-request-vote s p)
       :request-vote-reply (handle-request-vote-response s p)
       :append-entries (handle-append-entries s p)
       :append-entries-response (handle-append-entries-response s p))))
 
 (defn- process-rx-packets [state]
-  (loop [s state]
-    (if (empty? (:rx-queue s)) s
-        (recur (-> s
-                   (handle-packet)
-                   (utils/update :rx-queue rest))))))
+  (if (empty? (:rx-queue state))
+    state
+    (recur (-> state
+               (handle-packet)
+               (update-in [:rx-queue] rest)))))
 
-(defn update [dt state]
+(defn update-state [dt state]
   (->
-   (utils/update state :election-timeout - dt)
+   (update-in state [:election-timeout] - dt)
    (apply-commit-index)
    (utils/if-not-leader? check-election-timeout)
    (process-rx-packets)
@@ -96,6 +112,6 @@
    :last-applied 0
    :type :follower
    :election-timeout (utils/random-election-timeout)
-   :peers []
+   :peers {}
    :clients {}
    :db {}})

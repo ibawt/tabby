@@ -28,7 +28,7 @@
 (defn- stop-server [server]
   (doall
    (utils/mapf (:peer-sockets server) s/close!))
-  (when-let [s (:server-socket server)]
+  (when-let [^java.io.Closeable s (:server-socket server)]
     (info "stopping server socket: " (:id server))
     (.close s))
   (when-let [e (:event-loop server)]
@@ -43,17 +43,19 @@
                                     server))))
 
 (defn- step [state dt]
-  (cluster/foreach-server state swap! (partial server/update dt)))
+  (cluster/foreach-server state swap! (partial server/update-state dt)))
 
 (defn- assign-ports [servers base-port]
   (into {} (map-indexed (fn [i [key server]]
-                          [key (assoc server :port (+ i base-port))]) servers)))
+                          [key (-> server
+                                   (assoc :port (+ i base-port))
+                                   (assoc :hostname (str i ":" (+ i base-port))))]) servers)))
 
 (defrecord LocalNetworkCluster
     [servers ^Long time ^Integer base-port ^Integer timeout]
   cluster/Cluster
   (init-cluster [this num]
-    (-> (merge this (cluster/create num))
+    (-> (merge this (cluster/create base-port num))
         (update-in [:servers] assign-ports base-port)))
 
   (start-cluster [this]
