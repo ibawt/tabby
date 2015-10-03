@@ -50,6 +50,16 @@
   (start)
   :ready)
 
+(defn kill
+  "not done yet"
+  [n]
+  (alter-var-root #'cluster (fn [c]
+                              )))
+
+(defn rez
+  "not done yet"
+  [n])
+
 (defn reset []
   (try
     (stop)
@@ -60,13 +70,18 @@
       (warn e "caught exception in reset!!!"))))
 
 (defn set-value [key value]
-  (let [[kk value] (client/set-or-create klient key value)]
+  (let [[kk {code :value}] (client/set-or-create klient key value)]
     (when kk
       (alter-var-root #'klient (constantly kk)))
-    value))
+    code))
 
 (defn get-value [key]
-  (let [[kk value] (client/get-value klient key)]
+  (let [[kk {value :value}] (client/get-value klient key)]
+    (alter-var-root #'klient (constantly kk))
+    value))
+
+(defn compare-and-swap [key new old]
+  (let [[kk {value :value}] (client/compare-and-swap klient key new old)]
     (alter-var-root #'klient (constantly kk))
     value))
 
@@ -78,7 +93,15 @@
          (-> (unatom x)
              (select-keys [:type :id]))) (vals (:servers cluster))))
 
+(defn logs []
+  (map (fn [x]
+         (-> (unatom x)
+             (select-keys [:log :id :last-applied]))) (vals (:servers cluster))))
+
 (defn find-leader []
   (reduce-kv (fn [_ k v]
                (if (= :leader (:type (if (instance? clojure.lang.Atom v) @v v)))
                  (reduced [k v]) _)) nil (:servers cluster)))
+
+(defn leader-clients []
+  (:clients (unatom (second (find-leader)))))

@@ -59,8 +59,10 @@
                                 (d/recur))))))
 
        :client-handshake (let [client-index (utils/gen-uuid)]
-                           (info (:id @state) "client connected")
-                           (swap! state update-in [:clients] cs/create-client client-index s)
+                           (warn (:id @state) "client connected: " client-index)
+                           (swap! state update :clients
+                                  (fn [clients]
+                                    (cs/create-client clients client-index s)))
                            (d/loop []
                              (-> (s/take! s ::none)
                                  (d/chain
@@ -98,7 +100,7 @@
       @(connect-to-peer state peer-id))
     (s/put! (get-in @state [:peers peer-id :socket]) pkt))
   (when-let [client (:client-dst pkt)]
-    (s/put! (get-in @state [:clients client :socket]) pkt))
+    (s/put! (get-in @state [:clients client :socket]) (dissoc pkt :client-dst)))
   true)
 
 (defn- transmit [state]

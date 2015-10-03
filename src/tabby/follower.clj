@@ -1,8 +1,9 @@
 (ns tabby.follower
-  (:require [tabby.utils :refer :all]
-            [tabby.log :refer :all]
+  (:require [clojure.tools.logging :refer :all]
             [tabby.candidate :refer :all]
-            [clojure.tools.logging :refer :all]))
+            [tabby.client-state :as cs]
+            [tabby.log :refer :all]
+            [tabby.utils :refer :all]))
 
 (defn- election-timeout? [state]
   (<= (:election-timeout state) 0))
@@ -57,6 +58,9 @@
   [state leader-id]
   (info (:id state) " becoming follower, leader-id: " leader-id)
   (-> state
+      (cs/close-clients)
+      (dissoc :next-timeout)
+      (dissoc :match-index)
       (assoc :election-timeout (random-election-timeout))
       (assoc :leader-id leader-id)
       (assoc :type :follower)

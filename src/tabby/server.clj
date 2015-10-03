@@ -51,22 +51,32 @@
     (f s p)
     (redirect-to-leader s p)))
 
-(defn- handle-get [state p]
-  (client-read state p))
-
 (defn- handle-set [state p]
-  (utils/transmit
+  (cs/add-write
    (write state (select-keys p [:key :value]))
-   {:client-dst (:client-id p)
-    :value :ok}))
+   p))
 
 (defn- handle-cas [state p]
-  (if (= (read-value state (:key (:old p))) (:old p))
-    (write state (dissoc
-                  (assoc p :key (:key (:new p)) :value (:value (:new p)))
-                  :old :new))
-    ({:client-dst (:client-id p)
-      :type :fail})))
+  (cs/add-cas state p))
+
+(defn handle-append-entries-response [state p]
+  (if (pos? (get-in p [:body :count])) ; heart beat response
+    (do
+      (check-and-update-append-entries state p))
+    (update state :clients cs/inc-heartbeats (:src p))))
+
+(defn client-read
+  [state pkt]
+  (let [[s response] (cs/add-read state pkt)]
+    (if (= :broadcast-heart-beat response)
+      (do (warn "broadcasting response")
+          (broadcast-heartbeat s))
+      (do
+        (warn "transmitting old response")
+        (utils/transmit s response)))))
+
+(defn- handle-get [state p]
+  (client-read state p))
 
 (defn- handle-packet [state]
   (let [p (first (:rx-queue state))
@@ -83,13 +93,12 @@
 (defn- process-rx-packets [state]
   (if (empty? (:rx-queue state))
     state
-    (recur (-> state
-               (handle-packet)
-               (update-in [:rx-queue] rest)))))
+    (recur (-> (handle-packet state)
+               (update :rx-queue rest)))))
 
 (defn update-state [dt state]
   (->
-   (update-in state [:election-timeout] - dt)
+   (update state :election-timeout - dt)
    (apply-commit-index)
    (utils/if-not-leader? check-election-timeout)
    (process-rx-packets)

@@ -32,9 +32,9 @@
       (recur (connect-to-leader c))
       (do
         @(s/put! (:socket c) pkt)
-        (let [msg @(s/take! (:socket c) {:value :empty})]
+        (let [msg @(s/take! (:socket c) ::none)]
           (if-not (= :redirect (:type msg))
-            [c (:value msg)]
+            [c (:body msg)]
             (recur (set-leader c (:hostname msg) (:port msg)))))))))
 
 (defprotocol Client
@@ -46,12 +46,14 @@
 (defrecord LocalClient
     [servers socket leader]
   Client
-  (close [this])
+  (close [this]
+    (s/close! socket))
+
   (get-value [this key]
     (send-pkt this {:type :get :key key :uuid (utils/gen-uuid)}))
   (compare-and-swap [this key new old]
-    (send-pkt this {:type :cas :key key :new new :old old
-                      :uuid (utils/gen-uuid)}))
+    (send-pkt this {:type :cas :body {:key key :new new :old old}
+                    :uuid (utils/gen-uuid)}))
   (set-or-create [this key value]
     (send-pkt this {:type :set :value value :key key
                       :uuid (utils/gen-uuid)})))
