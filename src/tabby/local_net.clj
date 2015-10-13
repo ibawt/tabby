@@ -22,7 +22,7 @@
 
 (defn- start
   [state]
-  (-> (cluster/foreach-server state start-server)
+  (-> (cluster/foreach-server state start-server) 
       (cluster/foreach-server connect)))
 
 (defn- stop-server [server]

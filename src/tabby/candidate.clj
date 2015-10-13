@@ -22,7 +22,7 @@
   (info (:id state) " becoming candidate")
   (-> (assoc state :type :candidate)
       (assoc :voted-for (:id state))
-      (update-in [:current-term] inc)
+      (update :current-term inc)
       (assoc :election-timeout (u/random-election-timeout))
       (assoc :votes {(:id state) true})
       (broadcast-request-vote)))

@@ -39,7 +39,7 @@
                 (rest p))))))
 
 (defn transmit [state request]
-  (update-in state [:tx-queue] conj request))
+  (update state :tx-queue conj request))
 
 (defn quorum? [^long peers ^long c]
   (>= c (inc (/ peers 2))))
