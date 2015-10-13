@@ -45,13 +45,14 @@
     (if v @v v)))
 
 (defn wait-for-a-leader [c]
-  (loop [times 0]
-    (cond
-      (find-leader c) true
-      (> times 1000) false
-      :else (do
-              (Thread/sleep 10)
-              (recur (inc times))))))
+  (let [t0 (System/currentTimeMillis)]
+    (loop []
+      (cond
+        (find-leader c) true
+        (> (- (System/currentTimeMillis) t0) 30000) false
+        :else (do
+                (Thread/yield)
+                (recur))))))
 
 (deftest simple-test
   (testing "start elects a leader"
