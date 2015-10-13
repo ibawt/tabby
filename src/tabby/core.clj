@@ -1,6 +1,7 @@
 (ns tabby.core
   (:require [tabby.cluster :as cluster]
             [tabby.local-net :as local-net]
+            [clojure.tools.logging :refer [warn info]]
             [tabby.net :as net]
             [tabby.server :as server]
             [tabby.utils :as u])
@@ -41,7 +42,10 @@
                  (assoc opts (keyword (.substring a 1)) (second args))))))))
 
 (defn -main [& args]
-  (let [options (parse-args args)]
-    (-> (server/create-server (str (:hostname options) ":" (:port options)))
-        (net/start-server (:port options))
-        (server/set-peers (:peers options)))))
+  (try
+    (let [options (parse-args args)]
+     (-> (server/create-server (str (:hostname options) ":" (:port options)))
+         (net/start-server (:port options))
+         (server/set-peers (:peers options))))
+    (catch Exception e
+      (warn e "man caught exception exiting..."))))
