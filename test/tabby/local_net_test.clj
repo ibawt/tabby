@@ -11,6 +11,7 @@
 (defn test-cluster []
   (cluster/init-cluster (create-network-cluster 10 9090) 3))
 
+
 (defmacro with-cluster [bindings & body]
   `(let [~@bindings]
      (try
@@ -38,18 +39,30 @@
     x))
 
 (defn- find-leader [c]
-  (first (filter (comp = :leader :type unatom second) (:servers c))))
+  (let [[k v] (first (filter
+                      (fn [[k v]]
+                        (= :leader (:type @v))) (:servers c)))]
+    (if v @v v)))
+
+(defn wait-for-a-leader [c]
+  (loop [times 0]
+    (cond
+      (find-leader c) true
+      (> times 1000) false
+      :else (do
+              (Thread/sleep 10)
+              (recur (inc times))))))
 
 (deftest simple-test
   (testing "start elects a leader"
     (with-cluster [c (cluster/start-cluster (test-cluster))]
-      (Thread/sleep 500)
+      (is (wait-for-a-leader c))
       (is (= 1 (count (filter #(= :leader %)
                               (map (fn [[id s]] (:type @s)) (:servers c))))))
       (is (find-leader c))))
   (testing "start and write a value and get it back"
     (with-cluster [c (cluster/start-cluster (test-cluster))]
-      (Thread/sleep 300)
+      (wait-for-a-leader c)
       (with-client [klient (create-client)
                     [k v] (client/set-or-create klient :a "a")
                     [k' v'] (client/get-value k :a)]
@@ -57,7 +70,7 @@
         (is (= {:value "a"} v')))))
   (testing "compare and swap"
     (with-cluster [c (cluster/start-cluster (test-cluster))]
-       (Thread/sleep 500)
+      (wait-for-a-leader c)
        (with-client [klient (create-client)
                      [k v] (client/set-or-create klient :a "a")
                      [k' v'] (client/compare-and-swap k :a "b" "a")
