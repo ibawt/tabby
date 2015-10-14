@@ -64,3 +64,18 @@
 
 (defn gen-uuid []
   (str (java.util.UUID/randomUUID)))
+
+(defn thread-reduce [x & forms]
+  (loop [x x forms forms out []]
+    (if (empty? forms)
+      [x out]
+      (let [form (first forms)
+            [k v] (apply (first form) x (rest form))]
+        (recur k (rest forms) (conj out v))))))
+
+(defmacro thr
+  "threads the value x through the passed forms
+   kind of like the -> operator with result collection"
+  [x & forms]
+  (let [kk (map vec forms)]
+    `(thread-reduce ~x ~@kk)))

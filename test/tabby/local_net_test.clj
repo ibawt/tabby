@@ -64,20 +64,20 @@
   (testing "start and write a value and get it back"
     (with-cluster [c (cluster/start-cluster (test-cluster))]
       (wait-for-a-leader c)
-      (with-client [klient (create-client)
-                    [k v] (client/set-or-create klient :a "a")
-                    [k' v'] (client/get-value k :a)]
-        (is (= {:value :ok} v))
-        (is (= {:value "a"} v')))))
+      (with-client [[k v] (utils/thr (create-client)
+                               (client/set-or-create :a "a")
+                               (client/get-value :a))]
+        (is (= {:value :ok} (first v)))
+        (is (= {:value "a"} (second v))))))
   (testing "compare and swap"
     (with-cluster [c (cluster/start-cluster (test-cluster))]
       (wait-for-a-leader c)
-       (with-client [klient (create-client)
-                     [k v] (client/set-or-create klient :a "a")
-                     [k' v'] (client/compare-and-swap k :a "b" "a")
-                     [k'' v''] (client/get-value k' :a)
-                     [k''' v'''] (client/compare-and-swap k'' :a "c" "a")]
-         (is (= {:value :ok} v))
-         (is (= {:value :ok} v'))
-         (is (= {:value "b"} v''))
-         (is (= {:value :invalid-value} v'''))))))
+      (with-client [[k v] (utils/thr (create-client)
+                               (client/set-or-create :a "a")
+                               (client/compare-and-swap :a "b" "a")
+                               (client/get-value :a)
+                               (client/compare-and-swap :a "c" "a"))]
+        (is (= {:value :ok} (first v)))
+        (is (= {:value :ok} (second v)))
+        (is (= {:value "b"} (get v 2)))
+        (is (= {:value :invalid-value} (get v 3)))))))
