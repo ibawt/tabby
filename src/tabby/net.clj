@@ -55,6 +55,7 @@
                             ;(warn (:id @state) " accepting peer connection from: " (:src handshake))
                             (when-not (get-in @state [:peers (:src handshake) :socket])
                               ;; TODO: revisit this, not sure why we can't just overwrite it
+                              ;; race condition I think
                               (swap! state assoc-in [:peers (:src handshake) :socket] s))
                             (s/connect s (:rx-chan @state)))
 
@@ -68,7 +69,7 @@
                                 (d/recur))))))
 
        :client-handshake (let [client-index (utils/gen-uuid)]
-                           (info (:id @state) "client connected: " client-index)
+                           (warn (:id @state) "client connected: " client-index)
                            (swap! state update :clients cs/create-client client-index s)
                            (d/loop []
                              (-> (s/take! s ::none)
@@ -161,7 +162,7 @@
     ;;; state is an atom
     ;;; ----------------------------------------------------------------
     (a/go-loop [t (current-time)]
-      (when (seq? (:tx-queue @state))
+      (when-not (empty? (:tx-queue @state))
         (swap! state transmit))
       (if (a/alt!
             (:rx-chan @state) ([v] (if v (handle-rx-pkt state (- (current-time) t) v) false))
