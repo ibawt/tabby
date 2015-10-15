@@ -62,20 +62,21 @@
 (defn if-not-leader? [state f & args]
   (if-not (leader? state) (apply f state args) state))
 
-(defn gen-uuid []
+(defn gen-uuid
+  "generates a random UUID in String format"
+  []
   (str (java.util.UUID/randomUUID)))
 
 (defn thread-reduce [x & forms]
-  (loop [x x forms forms out []]
+  (loop [x x, forms forms, out (transient [])]
     (if (empty? forms)
-      [x out]
+      [x (persistent! out)]
       (let [form (first forms)
             [k v] (apply (first form) x (rest form))]
-        (recur k (rest forms) (conj out v))))))
+        (recur k (rest forms) (conj! out v))))))
 
 (defmacro thr
   "threads the value x through the passed forms
    kind of like the -> operator with result collection"
   [x & forms]
-  (let [kk (map vec forms)]
-    `(thread-reduce ~x ~@kk)))
+  `(thread-reduce ~x ~@(map vec forms)))

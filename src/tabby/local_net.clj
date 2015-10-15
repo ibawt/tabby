@@ -22,7 +22,7 @@
 
 (defn- start
   [state]
-  (-> (cluster/foreach-server state start-server) 
+  (-> (cluster/foreach-server state start-server)
       (cluster/foreach-server connect)))
 
 (defn- stop-server [server]
@@ -56,10 +56,21 @@
   cluster/Cluster
   (init-cluster [this num]
     (-> (merge this (cluster/create base-port num))
-        (update-in [:servers] assign-ports base-port)))
+        (update :servers assign-ports base-port)))
 
   (start-cluster [this]
     (start this))
+
+  (kill-server [this id]
+    (-> (update-in this [:servers id] (fn [x]
+                                        (if (instance? clojure.lang.Atom x)
+                                          (swap! x stop-server)
+                                          x)))))
+  (rez-server [this id]
+    (-> (update-in this [:servers id] (fn [x]
+                                        (if (instance? clojure.lang.Atom x)
+                                          x
+                                          (connect  (start-server x)))))))
 
   (stop-cluster [this]
     (stop this))

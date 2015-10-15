@@ -10,7 +10,7 @@
 (def cluster-maker
   (partial local-net/create-network-cluster 10 8090))
 
-(def cluster (cluster-maker))
+(defonce cluster (cluster-maker))
 
 (defn- local-client []
   (client/make-local-client [{:host "127.0.0.1" :port 8090}
@@ -53,12 +53,12 @@
 (defn kill
   "not done yet"
   [n]
-  (alter-var-root #'cluster (fn [c]
-                              )))
+  (alter-var-root #'cluster cluster/kill-server (str n ".localnet:" n)))
 
 (defn rez
   "not done yet"
-  [n])
+  [n]
+  (alter-var-root #'cluster cluster/rez-server n))
 
 (defn reset []
   (try

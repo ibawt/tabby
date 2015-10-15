@@ -99,6 +99,8 @@
   "cluster methods (test and repl)"
   (init-cluster [this num])
   (start-cluster [this])
+  (kill-server [this id])
+  (rez-server [this id])
   (stop-cluster [this])
   (step-cluster [this dt]))
 
@@ -108,6 +110,8 @@
     (assoc this (create num)))
   (start-cluster [this]
     this)
+  (kill-server [this id])
+  (rez-server [this id])
   (stop-cluster [this]
     this)
   (step-cluster [this dt]

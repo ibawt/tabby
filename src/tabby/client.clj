@@ -19,10 +19,14 @@
 (defn- connect-to-leader
   "blocks"
   [client]
-  (let [socket @(net/client (get-in client [:leader :host])
-                            (get-in client [:leader :port]))]
-    (s/put! socket {:type :client-handshake})
-    (assoc client :socket socket)))
+  (try
+    (let [socket @(net/client (get-in client [:leader :host])
+                              (get-in client [:leader :port]))]
+      (s/put! socket {:type :client-handshake})
+      (assoc client :socket socket))
+    (catch Exception e
+      (warn e "caught exception in connect")
+      nil)))
 
 (defn- send-pkt
   "this will block"
