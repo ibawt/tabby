@@ -52,7 +52,7 @@
      [handshake (s/take! s)]
      (condp = (:type handshake)
        :peering-handshake (do
-                            (info (:id @state) " accepting peer connection from: " (:src handshake))
+                            ;(warn (:id @state) " accepting peer connection from: " (:src handshake))
                             (when-not (get-in @state [:peers (:src handshake) :socket])
                               ;; TODO: revisit this, not sure why we can't just overwrite it
                               (swap! state assoc-in [:peers (:src handshake) :socket] s))
