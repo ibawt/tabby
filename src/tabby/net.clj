@@ -33,6 +33,8 @@
      (io/decode-stream s protocol))))
 
 (defn client
+  "Tcp connection to the host:port combo provided.
+   Returns a deferred."
   [host port]
   (assert host "host is nil")
   (assert port "port is nil")
@@ -52,6 +54,7 @@
        :peering-handshake (do
                             (info (:id @state) " accepting peer connection from: " (:src handshake))
                             (when-not (get-in @state [:peers (:src handshake) :socket])
+                              ;; TODO: revisit this, not sure why we can't just overwrite it
                               (swap! state assoc-in [:peers (:src handshake) :socket] s))
                             (s/connect s (:rx-chan @state)))
 
@@ -113,21 +116,6 @@
     (catch Exception e
       (warn e "caught exception in connect to peer")
       state)))
-
-(defn- send-pkt
-  "TODO: this should be more lazy and less swappy"
-  [state pkt]
-  (when-let [peer-id (:dst pkt)]
-    (let [socket (get-in @state [:peers peer-id :socket])]
-      (when (or (nil? socket) (s/closed? socket))
-        @(connect-to-peer state [peer-id (get-in @state [:peers peer-id])]))
-      (s/put! (get-in @state [:peers peer-id :socket]) pkt)))
-  (when-let [client (:client-dst pkt)]
-    (let [socket (get-in @state [:clients client :socket])]
-      (if (s/closed? socket)
-        (swap! state assoc-in [:clients client :socket] nil))
-      (s/put! (get-in @state [:clients client :socket]) (dissoc pkt :client-dst))))
-  nil)
 
 (defn- send-peer-packet [state p]
   (let [peer-id (:dst p)]
