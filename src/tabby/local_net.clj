@@ -9,10 +9,10 @@
             [tabby.utils :as utils]))
 
 (defn- connect-to-peers [server]
-  (let [peers (->> (map (fn [p] (net/connect-to-peer3 @server p)) (:peers @server))
-                    (apply d/zip) ; multiple deferred's into one
-                    (deref)
-                    (into {}))]
+  (let [peers (->> (map #(net/connect-to-peer3 @server %) (:peers @server))
+                   (apply d/zip) ; multiple deferred's into one
+                   (deref)
+                   (into {}))]
     (swap! server assoc :peers peers)))
 
 (defn- start-server [server & rest]
@@ -65,15 +65,15 @@
     (start this))
 
   (kill-server [this id]
-    (-> (update-in this [:servers id] (fn [x]
-                                        (if (instance? clojure.lang.Atom x)
-                                          (swap! x stop-server)
-                                          x)))))
+    (update-in this [:servers id] (fn [x]
+                                    (if (instance? clojure.lang.Atom x)
+                                      (swap! x stop-server)
+                                      x))))
   (rez-server [this id]
-    (-> (update-in this [:servers id] (fn [x]
-                                        (if (instance? clojure.lang.Atom x)
-                                          x
-                                          (connect  (start-server x)))))))
+    (update-in this [:servers id] (fn [x]
+                                    (if (instance? clojure.lang.Atom x)
+                                      x
+                                      (connect  (start-server x))))))
 
   (stop-cluster [this]
     (stop this))
