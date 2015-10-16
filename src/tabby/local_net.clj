@@ -1,16 +1,19 @@
 (ns tabby.local-net
-  (:require [tabby.net :as net]
-            [tabby.utils :as utils]
-            [tabby.server :as server]
-            [clojure.core.async :refer [close!]]
+  (:require [clojure.core.async :refer [close!]]
+            [clojure.tools.logging :refer :all]
+            [manifold.deferred :as d]
             [manifold.stream :as s]
             [tabby.cluster :as cluster]
-            [clojure.tools.logging :refer :all]))
+            [tabby.net :as net]
+            [tabby.server :as server]
+            [tabby.utils :as utils]))
 
 (defn- connect-to-peers [server]
-  (doseq [peer (:peers @server)]
-    (net/connect-to-peer server peer))
-  server)
+  (let [peers (->> (map (fn [p] (net/connect-to-peer3 @server p)) (:peers @server))
+                    (apply d/zip) ; multiple deferred's into one
+                    (deref)
+                    (into {}))]
+    (swap! server assoc :peers peers)))
 
 (defn- start-server [server & rest]
   (net/create-server server (:port server)))
@@ -34,7 +37,7 @@
   (when-let [e (:event-loop server)]
     (info "stopping event loop: " (:id server))
     (close! e))
-  (merge server {:event-loop nil :server-socket nil}))
+  (dissoc server :event-loop :server-socket))
 
 (defn- stop [state]
   (cluster/foreach-server state (fn [server]

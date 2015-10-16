@@ -1,17 +1,17 @@
 (ns tabby.net
-  (:require [tabby.utils :as utils]
-            [clojure.edn :as edn]
-            [gloss.core :as gloss]
-            [tabby.client-state :as cs]
-            [gloss.io :as io]
-            [tabby.utils :as u]
-            [aleph.tcp :as tcp]
-            [manifold.stream :as s]
-            [manifold.deferred :as d]
+  (:require [aleph.tcp :as tcp]
             [clojure.core.async :as a]
-            [clojure.tools.logging :refer :all]
+            [clojure.edn :as edn]
+            [clojure.tools.logging :refer [warn info]]
+            [gloss.core :as gloss]
+            [gloss.io :as io]
+            [manifold.deferred :as d]
+            [manifold.stream :as s]
+            [tabby.client-state :as cs]
+            [tabby.cluster :as cluster]
             [tabby.server :as server]
-            [tabby.cluster :as cluster]))
+            [tabby.utils :as u]
+            [tabby.utils :as utils]))
 
 (def ^:private protocol
   (gloss/compile-frame
@@ -52,7 +52,7 @@
      [handshake (s/take! s)]
      (condp = (:type handshake)
        :peering-handshake (do
-                            ;(warn (:id @state) " accepting peer connection from: " (:src handshake))
+                            (warn (:id @state) " accepting peer connection from: " (:src handshake))
                             (when-not (get-in @state [:peers (:src handshake) :socket])
                               ;; TODO: revisit this, not sure why we can't just overwrite it
                               ;; race condition I think
@@ -117,6 +117,15 @@
     (catch Exception e
       (warn e "caught exception in connect to peer")
       state)))
+
+(defn connect-to-peer3
+  "deferred connect version, returns just the socket in a defered"
+  [state [id peer]]
+  (-> (d/let-flow [socket (client (:hostname peer) (:port peer))
+                   _ (s/put! socket {:src (:id state) :type :peering-handshake})]
+                  [id (assoc peer :socket socket)])
+      (d/catch (fn [ex]
+                 (warn ex "caught exception in connect")))))
 
 (defn- send-peer-packet [state p]
   (let [peer-id (:dst p)]
