@@ -1,6 +1,5 @@
 (ns tabby.net
   (:require [aleph.tcp :as tcp]
-            [clojure.core.async :as a]
             [clojure.edn :as edn]
             [clojure.tools.logging :refer [warn info]]
             [gloss.core :as gloss]
@@ -10,7 +9,6 @@
             [tabby.client-state :as cs]
             [tabby.cluster :as cluster]
             [tabby.server :as server]
-            [tabby.utils :as u]
             [tabby.utils :as utils]))
 
 (def ^:private protocol
@@ -68,15 +66,8 @@
   (let [client-index (utils/gen-uuid)]
     (warn (:id @state) "client connected: " client-index)
     (swap! state update :clients cs/create-client client-index socket)
-    (d/loop []
-      (-> (s/take! socket ::none)
-          (d/chain
-           (fn [msg]
-             (when-not (= ::none msg)
-               (a/go
-                 (a/>! (:rx-chan @state)
-                       (assoc msg :client-id client-index)))
-               (d/recur))))))))
+    (s/connect (s/map #(assoc % :client-id client-index) socket)
+               (:rx-chan @state))))
 
 (defn- connection-handler
   "Returns a function that will handle the handshake for incoming connections."
@@ -96,10 +87,13 @@
                     (warn ex "caught exception! closing socket")
                     (s/close! s)))))))
 
-(definline ^:private current-time
+(defn- current-time
   "current time in ms"
   []
-  (System/currentTimeMillis))
+  (long (/ (System/nanoTime) 1000000)))
+
+(defn- delta-t [t]
+  (max (- (current-time) t) 0))
 
 (defn- handle-timeout
   "timeout of dt seconds, just run the update"
@@ -167,21 +161,22 @@
   true)
 
 (defn event-loop [state {timeout :timeout}]
-  (let [stop (a/chan)]
-    ;;; ----------------------------------------------------------------
-    ;;; state is an atom
-    ;;; ----------------------------------------------------------------
-    (a/go-loop [t (current-time)]
-      (when-not (empty? (:tx-queue @state))
-        (transmit @state)
-        (swap! state assoc :tx-queue []))
-      (if (a/alt!
-            (:rx-chan @state) ([v] (if v (handle-rx-pkt state (- (current-time) t) v) false))
-            stop false
-            (a/timeout 10) (handle-timeout state (- (current-time) t)))
-        (recur (current-time))
-        :stopped))
-    stop))
+  (d/loop [t (current-time)]
+    (when-not (empty? (:tx-queue @state))
+      (transmit @state)
+      (swap! state assoc :tx-queue []))
+    (-> (d/chain (s/try-take! (:rx-chan @state) ::none 10 ::timeout)
+                 (fn [msg]
+                   (if-not (condp = msg
+                             ::none false
+                             ::timeout (handle-timeout state (delta-t t))
+                             (handle-rx-pkt state (delta-t t) msg))
+                     (info "event loop exiting...")
+                     (d/recur (current-time)))))
+        (d/catch (fn [ex]
+                   (warn ex "caught exception in event loop")
+                   (s/close! (:rx-chan @state)))))))
+
 
 (defn start-server
   [server port]
@@ -191,10 +186,12 @@
      ((connection-handler server) (wrap-duplex-stream protocol s) info))
    {:port port}))
 
+(def ^:private rx-buffer-size 5)
+
 (defn create-server [server port]
   (info "creating server: " (:id server) " on port: " port)
   (let [s (atom server)
         socket (start-server s port)]
     (swap! s merge {:server-socket socket
-                    :rx-chan (a/chan 3)})
+                    :rx-chan (s/stream rx-buffer-size)})
     s))

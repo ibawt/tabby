@@ -1,6 +1,5 @@
 (ns tabby.local-net
-  (:require [clojure.core.async :refer [close!]]
-            [clojure.tools.logging :refer :all]
+  (:require [clojure.tools.logging :refer :all]
             [manifold.deferred :as d]
             [manifold.stream :as s]
             [tabby.cluster :as cluster]
@@ -20,7 +19,8 @@
 
 (defn- connect [server]
   (connect-to-peers server)
-  (swap! server assoc :event-loop (net/event-loop server (select-keys @server [:timeout])))
+  (swap! server assoc :event-loop
+         (net/event-loop server (select-keys @server [:timeout])))
   server)
 
 (defn- start
@@ -34,10 +34,11 @@
   (when-let [^java.io.Closeable s (:server-socket server)]
     (info "stopping server socket: " (:id server))
     (.close s))
-  (when-let [e (:event-loop server)]
-    (info "stopping event loop: " (:id server))
-    (close! e))
-  (dissoc server :event-loop :server-socket))
+
+  (when-let [queue (:rx-chan server)]
+    (info "closing rx queue")
+    (s/close! queue))
+  (dissoc server :rx-queue :server-socket))
 
 (defn- stop [state]
   (cluster/foreach-server state (fn [server]
