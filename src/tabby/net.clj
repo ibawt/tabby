@@ -49,12 +49,12 @@
            #(wrap-duplex-stream protocol %)))
 
 (defn- connect-peer-socket
-  "Connects the peer messages to the :rx-chan"
+  "Connects the peer messages to the :rx-stream"
   [state socket handshake]
   (info (:id @state) " accepting peer connection from: " (:src handshake))
   (when-not (get-in @state [:peers (:src handshake) :socket])
     (swap! state assoc-in [:peers (:src handshake) :socket] socket))
-  (s/connect socket (:rx-chan @state)))
+  (s/connect socket (:rx-stream @state)))
 
 (defn- connect-table-tennis-socket
   ":ping -> :pong"
@@ -69,13 +69,13 @@
              (d/recur)))))))
 
 (defn- connect-client-socket
-  "Dispatches socket messages to the states :rx-queue"
+  "Dispatches socket messages to the states :rx-stream"
   [state socket handshake]
   (let [client-index (utils/gen-uuid)]
-    (warn (:id @state) "client connected: " client-index)
+    (info (:id @state) "client connected: " client-index)
     (swap! state update :clients cs/create-client client-index socket)
     (s/connect (s/map #(assoc % :client-id client-index) socket)
-               (:rx-chan @state))))
+               (:rx-stream @state))))
 
 (defn- connection-handler
   "Returns a function that will handle the handshake for incoming connections."
@@ -94,7 +94,6 @@
          (d/catch (fn [ex]
                     (warn ex "Caught exception!")
                     (s/close! s)))))))
-
 
 (defn connect-to-peer
   "deferred connect version, returns just the socket in a defered"
@@ -168,17 +167,16 @@
     (when-not (empty? (:tx-queue @state))
       (transmit @state)
       (swap! state assoc :tx-queue '()))
-    (-> (d/chain (s/try-take! (:rx-chan @state) ::none 10 ::timeout)
+    (-> (d/chain (s/try-take! (:rx-stream @state) ::none 10 ::timeout)
                  (fn [msg]
-                   (if-not (condp = msg
+                   (when (condp = msg
                              ::none false
                              ::timeout (handle-timeout state (delta-t t))
                              (handle-rx-pkt state (delta-t t) msg))
-                     (info "event loop exiting...")
                      (d/recur (current-time)))))
         (d/catch (fn [ex]
                    (warn ex "caught exception in event loop")
-                   (s/close! (:rx-chan @state)))))))
+                   (s/close! (:rx-stream @state)))))))
 
 
 (defn start-server
@@ -190,7 +188,7 @@
      ((connection-handler server) (wrap-duplex-stream protocol s) info))
    {:port port}))
 
-(def ^:private rx-buffer-size 5)
+(def ^:private rx-buffer-size 5) ; no data for this random choice
 
 (defn create-server
   "Creates a network instance of the server."
@@ -199,5 +197,17 @@
   (let [s (atom server)
         socket (start-server s port)]
     (swap! s merge {:server-socket socket
-                    :rx-chan (s/stream rx-buffer-size)})
+                    :rx-stream (s/stream rx-buffer-size)})
     s))
+
+(defn stop-server [server]
+  (doall
+   (utils/mapf (:peer-sockets server) s/close!))
+  (when-let [^java.io.Closeable s (:server-socket server)]
+    (info "stopping server socket: " (:id server))
+    (.close s))
+
+  (when-let [queue (:rx-queue server)]
+    (info "closing rx queue")
+    (s/close! queue))
+  (dissoc server :rx-stream :server-socket))

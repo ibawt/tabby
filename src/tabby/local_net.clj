@@ -28,22 +28,11 @@
   (-> (cluster/foreach-server state start-server)
       (cluster/foreach-server connect)))
 
-(defn- stop-server [server]
-  (doall
-   (utils/mapf (:peer-sockets server) s/close!))
-  (when-let [^java.io.Closeable s (:server-socket server)]
-    (info "stopping server socket: " (:id server))
-    (.close s))
-
-  (when-let [queue (:rx-chan server)]
-    (info "closing rx queue")
-    (s/close! queue))
-  (dissoc server :rx-queue :server-socket))
 
 (defn- stop [state]
   (cluster/foreach-server state (fn [server]
                                   (if (instance? clojure.lang.Atom server)
-                                    (swap! server stop-server)
+                                    (swap! server net/stop-server)
                                     server))))
 
 (defn- step [state dt]
@@ -68,7 +57,7 @@
   (kill-server [this id]
     (update-in this [:servers id] (fn [x]
                                     (if (instance? clojure.lang.Atom x)
-                                      (swap! x stop-server)
+                                      (swap! x net/stop-server)
                                       x))))
   (rez-server [this id]
     (update-in this [:servers id] (fn [x]
