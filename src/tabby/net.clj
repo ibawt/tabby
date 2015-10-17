@@ -4,6 +4,7 @@
             [clojure.tools.logging :refer [warn info]]
             [gloss.core :as gloss]
             [gloss.io :as io]
+            [taoensso.nippy :as nippy]
             [manifold.deferred :as d]
             [manifold.stream :as s]
             [tabby.client-state :as cs]
@@ -12,12 +13,11 @@
             [tabby.utils :as utils]))
 
 (def ^:private protocol
-  "The tabby protocol definition, serialized strings through EDN"
+  "The tabby protocol definition."
   (gloss/compile-frame
-   (gloss/finite-frame :uint32
-                       (gloss/string :utf-8))
-   pr-str
-   edn/read-string))
+   (gloss/finite-block :uint32)
+   (comp byte-streams/to-byte-buffer nippy/freeze)
+   (comp nippy/thaw byte-streams/to-byte-array)))
 
 (defn- wrap-duplex-stream
   "wrap the stream in the protocol"
@@ -30,6 +30,16 @@
     (s/splice
      out
      (io/decode-stream s protocol))))
+
+(defn- current-time
+  "current time in ms"
+  []
+  (long (/ (System/nanoTime) 1000000)))
+
+(defn- delta-t
+  "Returns the time difference between t and now.  Will be >= 0"
+  [t]
+  (max (- (current-time) t) 0))
 
 (defn client
   "Tcp connection to the host:port combo provided.
@@ -80,20 +90,13 @@
             :table-tennis connect-table-tennis-socket
             :client-handshake connect-client-socket
             (fn [&_]
-              (warn "invalid handshake")
+              (warn "Invalid handshake: " (:type handshake))
               (s/close! s)))
           state s handshake)
          (d/catch (fn [ex]
-                    (warn ex "caught exception! closing socket")
+                    (warn ex "Caught exception!")
                     (s/close! s)))))))
 
-(defn- current-time
-  "current time in ms"
-  []
-  (long (/ (System/nanoTime) 1000000)))
-
-(defn- delta-t [t]
-  (max (- (current-time) t) 0))
 
 (defn- handle-timeout
   "timeout of dt seconds, just run the update"
@@ -136,7 +139,7 @@
   (let [client (:client-dst p)
         socket (get-in state [:clients client :socket])]
     (if (and socket (s/closed? socket))
-      (assoc-in state [:clients client :socket] nil)
+      (update-in state [:clients client] dissoc :socket)
       (do
         (s/put! socket (dissoc p :client-dst))
         state))))
