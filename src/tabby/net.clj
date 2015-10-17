@@ -1,6 +1,5 @@
 (ns tabby.net
   (:require [aleph.tcp :as tcp]
-            [clojure.edn :as edn]
             [clojure.tools.logging :refer [warn info]]
             [gloss.core :as gloss]
             [gloss.io :as io]
@@ -8,14 +7,13 @@
             [manifold.deferred :as d]
             [manifold.stream :as s]
             [tabby.client-state :as cs]
-            [tabby.cluster :as cluster]
             [tabby.server :as server]
             [tabby.utils :as utils]))
 
 (def ^:private protocol
   "The tabby protocol definition."
   (gloss/compile-frame
-   (gloss/finite-block :uint32)
+   (gloss/finite-block :uint16)
    (comp byte-streams/to-byte-buffer nippy/freeze)
    (comp nippy/thaw byte-streams/to-byte-array)))
 
@@ -98,25 +96,7 @@
                     (s/close! s)))))))
 
 
-(defn- handle-timeout
-  "timeout of dt seconds, just run the update"
-  [state dt]
-  (swap! state (fn [s] (server/update-state dt s)))
-  true)
-
-(defn connect-to-peer2
-  "when the peer socket isn't present connect to it
-   (will block)"
-  [state [id peer]]
-  (try
-    (let [socket @(client (:hostname peer) (:port peer))]
-      (d/let-flow [_ (s/put! socket {:src (:id state) :type :peering-handshake})]
-                  (assoc-in state [:peers id :socket] socket)))
-    (catch Exception e
-      (warn e "caught exception in connect to peer")
-      state)))
-
-(defn connect-to-peer3
+(defn connect-to-peer
   "deferred connect version, returns just the socket in a defered"
   [state [id peer]]
   (-> (d/let-flow [socket (client (:hostname peer) (:port peer))
@@ -125,17 +105,23 @@
       (d/catch (fn [ex]
                  (warn ex "caught exception in connect")))))
 
-(defn- send-peer-packet [state p]
+(defn- send-peer-packet
+  "sends a packet to the appropriate peer socket, will reconnect"
+  [state p]
+  ;;; TODO: refactor
   (let [peer-id (:dst p)]
    (loop [s state times 0]
      (let [socket (get-in s [:peers peer-id :socket])]
        (if (and socket (not (s/closed? socket)))
          (do
            (s/put! socket p) s)
-         (recur @(connect-to-peer2 s [peer-id (get-in s [:peers peer-id])])
+         (recur (assoc-in @(connect-to-peer s [peer-id
+                                              (get-in s [:peers peer-id])]))
                 (inc times)))))))
 
-(defn- send-client-packet [state p]
+(defn- send-client-packet
+  "send a packect to the client, won't reconnect"
+  [state p]
   (let [client (:client-dst p)
         socket (get-in state [:clients client :socket])]
     (if (and socket (s/closed? socket))
@@ -144,30 +130,44 @@
         (s/put! socket (dissoc p :client-dst))
         state))))
 
-(defn- send-pkt [state p]
+(defn- send-pkt
+  "dispatch method for sending packets"
+  [state p]
   (cond
     (:dst p) (send-peer-packet state p)
     (:client-dst p) (send-client-packet state p)
     :else (assert false "invalid packet")))
 
-(defn- transmit [state]
+(defn- transmit
+  "sends all the currently queued packets"
+  [state]
   (loop [pkts (:tx-queue state)
          s state]
     (if (empty? pkts)
-      (assoc s :tx-queue [])
+      (assoc s :tx-queue '())
       (recur (rest pkts) (send-pkt s (first pkts))))))
 
-(defn- handle-rx-pkt [state dt pkt]
+(defn- handle-rx-pkt
+  "appends the pkt and runs update"
+  [state dt pkt]
   (swap! state
          (fn [s]
            (server/update-state dt (update s :rx-queue conj pkt))))
   true)
 
-(defn event-loop [state {timeout :timeout}]
+(defn- handle-timeout
+  "timeout of dt seconds, just run the update"
+  [state dt]
+  (swap! state (fn [s] (server/update-state dt s)))
+  true)
+
+(defn event-loop
+  "Runs the event loop for a server instance.  Returns a deferred."
+  [state {timeout :timeout}]
   (d/loop [t (current-time)]
     (when-not (empty? (:tx-queue @state))
       (transmit @state)
-      (swap! state assoc :tx-queue []))
+      (swap! state assoc :tx-queue '()))
     (-> (d/chain (s/try-take! (:rx-chan @state) ::none 10 ::timeout)
                  (fn [msg]
                    (if-not (condp = msg
@@ -182,6 +182,7 @@
 
 
 (defn start-server
+  "Starts the server listening."
   [server port]
   (info "starting server on port: " port)
   (tcp/start-server
@@ -191,7 +192,9 @@
 
 (def ^:private rx-buffer-size 5)
 
-(defn create-server [server port]
+(defn create-server
+  "Creates a network instance of the server."
+  [server port]
   (info "creating server: " (:id server) " on port: " port)
   (let [s (atom server)
         socket (start-server s port)]

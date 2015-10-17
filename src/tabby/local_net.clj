@@ -8,7 +8,7 @@
             [tabby.utils :as utils]))
 
 (defn- connect-to-peers [server]
-  (let [peers (->> (map #(net/connect-to-peer3 @server %) (:peers @server))
+  (let [peers (->> (map #(net/connect-to-peer @server %) (:peers @server))
                    (apply d/zip) ; multiple deferred's into one
                    (deref)
                    (into {}))]

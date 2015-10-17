@@ -115,8 +115,8 @@
   {:current-term 0
    :log []
    :id id
-   :tx-queue []
-   :rx-queue []
+   :tx-queue '()
+   :rx-queue '()
    :commit-index 0
    :last-applied 0
    :type :follower
