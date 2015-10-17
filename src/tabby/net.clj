@@ -14,6 +14,7 @@
             [tabby.utils :as utils]))
 
 (def ^:private protocol
+  "The tabby protocol definition, serialized strings through EDN"
   (gloss/compile-frame
    (gloss/finite-frame :uint32
                        (gloss/string :utf-8))
@@ -25,7 +26,7 @@
   [protocol s]
   (let [out (s/stream)]
     (s/connect
-     (s/map (partial io/encode protocol) out)
+     (s/map #(io/encode protocol %) out)
      s)
 
     (s/splice
@@ -39,47 +40,61 @@
   (assert host "host is nil")
   (assert port "port is nil")
   (d/chain (tcp/client {:host host, :port port})
-           (partial wrap-duplex-stream protocol)))
+           #(wrap-duplex-stream protocol %)))
+
+(defn- connect-peer-socket
+  "Connects the peer messages to the :rx-chan"
+  [state socket handshake]
+  (info (:id @state) " accepting peer connection from: " (:src handshake))
+  (when-not (get-in @state [:peers (:src handshake) :socket])
+    (swap! state assoc-in [:peers (:src handshake) :socket] socket))
+  (s/connect socket (:rx-chan @state)))
+
+(defn- connect-table-tennis-socket
+  ":ping -> :pong"
+  [state socket handshake]
+  (d/loop []
+    (-> (s/take! socket ::none)
+        (d/chain
+         (fn [msg]
+           (when-not (= ::none msg)
+             (when (= :ping msg)
+               (s/put! socket :pong))
+             (d/recur)))))))
+
+(defn- connect-client-socket
+  "Dispatches socket messages to the states :rx-queue"
+  [state socket handshake]
+  (let [client-index (utils/gen-uuid)]
+    (warn (:id @state) "client connected: " client-index)
+    (swap! state update :clients cs/create-client client-index socket)
+    (d/loop []
+      (-> (s/take! socket ::none)
+          (d/chain
+           (fn [msg]
+             (when-not (= ::none msg)
+               (a/go
+                 (a/>! (:rx-chan @state)
+                       (assoc msg :client-id client-index)))
+               (d/recur))))))))
 
 (defn- connection-handler
-  "incoming connection handler"
+  "Returns a function that will handle the handshake for incoming connections."
   [state]
   (fn [s info]
-    ;;; -------------------------------------------
-    ;;; state is an atom. this is multi-threaded
-    ;;; -------------------------------------------
     (d/let-flow
      [handshake (s/take! s)]
-     (condp = (:type handshake)
-       :peering-handshake (do
-                            (warn (:id @state) " accepting peer connection from: " (:src handshake))
-                            (when-not (get-in @state [:peers (:src handshake) :socket])
-                              ;; TODO: revisit this, not sure why we can't just overwrite it
-                              ;; race condition I think
-                              (swap! state assoc-in [:peers (:src handshake) :socket] s))
-                            (s/connect s (:rx-chan @state)))
-
-       :table-tennis (d/loop []
-                       (-> (s/take! s ::none)
-                           (d/chain
-                            (fn [msg]
-                              (when-not (= ::none msg)
-                                (when (= :ping msg)
-                                  (s/put! s :pong))
-                                (d/recur))))))
-
-       :client-handshake (let [client-index (utils/gen-uuid)]
-                           (warn (:id @state) "client connected: " client-index)
-                           (swap! state update :clients cs/create-client client-index s)
-                           (d/loop []
-                             (-> (s/take! s ::none)
-                                 (d/chain
-                                  (fn [msg]
-                                    (when-not (= ::none msg)
-                                      (a/go
-                                         (a/>! (:rx-chan @state)
-                                              (assoc msg :client-id client-index)))
-                                      (d/recur)))))))))))
+     (-> ((condp = (:type handshake)
+            :peering-handshake connect-peer-socket 
+            :table-tennis connect-table-tennis-socket
+            :client-handshake connect-client-socket
+            (fn [&_]
+              (warn "invalid handshake")
+              (s/close! s)))
+          state s handshake)
+         (d/catch (fn [ex]
+                    (warn ex "caught exception! closing socket")
+                    (s/close! s)))))))
 
 (definline ^:private current-time
   "current time in ms"
@@ -91,20 +106,6 @@
   [state dt]
   (swap! state (fn [s] (server/update-state dt s)))
   true)
-
-
-(defn connect-to-peer
-  "when the peer socket isn't present connect to it
-   (will block)"
-  [state [id peer]]
-  (try
-    (let [socket @(client (:hostname peer) (:port peer))]
-      (d/let-flow [_ (s/put! socket {:src (:id @state) :type :peering-handshake})]
-                  (swap! state assoc-in [:peers id :socket] socket)))
-    (catch Exception e
-      (warn e "caught exception in connect to peer")
-      state)))
-
 
 (defn connect-to-peer2
   "when the peer socket isn't present connect to it
@@ -156,7 +157,7 @@
   (loop [pkts (:tx-queue state)
          s state]
     (if (empty? pkts)
-      (assoc s :tx-queue '())
+      (assoc s :tx-queue [])
       (recur (rest pkts) (send-pkt s (first pkts))))))
 
 (defn- handle-rx-pkt [state dt pkt]
@@ -172,7 +173,8 @@
     ;;; ----------------------------------------------------------------
     (a/go-loop [t (current-time)]
       (when-not (empty? (:tx-queue @state))
-        (swap! state transmit))
+        (transmit @state)
+        (swap! state assoc :tx-queue []))
       (if (a/alt!
             (:rx-chan @state) ([v] (if v (handle-rx-pkt state (- (current-time) t) v) false))
             stop false
@@ -194,5 +196,5 @@
   (let [s (atom server)
         socket (start-server s port)]
     (swap! s merge {:server-socket socket
-                    :rx-chan (a/chan)})
+                    :rx-chan (a/chan 3)})
     s))

@@ -35,7 +35,7 @@
     (->
      state
      (update-in [:last-applied] inc)
-     (update-in [:db] (partial apply-entry state)))
+     (update-in [:db] #(apply-entry state %)))
     state))
 
 (defn- redirect-to-leader [state p]
@@ -115,8 +115,8 @@
   {:current-term 0
    :log []
    :id id
-   :tx-queue '()
-   :rx-queue '()
+   :tx-queue []
+   :rx-queue []
    :commit-index 0
    :last-applied 0
    :type :follower
