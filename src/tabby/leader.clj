@@ -50,13 +50,10 @@
   (assoc-in state [:next-timeout peer] peer-next-timeout))
 
 (defn- send-peer-update [state [peer value]]
-  (transmit state (if (> (last-log-index state) (get (:match-index state) peer))
-                    (do
-                      (warn "sending an append log")
-                      (make-append-log-pkt state peer))
-                    (do
-;                      (warn "heart beak pkt")
-                      (make-heart-beat-pkt state peer)))))
+  (transmit state
+            (if (> (last-log-index state) (get (:match-index state) peer))
+              (make-append-log-pkt state peer)
+              (make-heart-beat-pkt state peer))))
 
 (defn- broadcast-heart-beat [state]
   (->
@@ -91,7 +88,7 @@
              [p (f)])))
 
 (defn become-leader [state]
-  (warn (:id state) " becoming leader")
+  (info (:id state) " becoming leader")
   (broadcast-heart-beat
    (merge state
           {:type :leader

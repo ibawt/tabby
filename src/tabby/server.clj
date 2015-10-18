@@ -32,14 +32,13 @@
 
 (defn- apply-commit-index [state]
   (if (> (:commit-index state) (:last-applied state))
-    (->
-     state
-     (update-in [:last-applied] inc)
-     (update-in [:db] #(apply-entry state %)))
+    (-> (update state :last-applied inc)
+        (update :db #(apply-entry state %)))
     state))
 
 (defn- redirect-to-leader [state p]
-  (warn (:id state) "redirecting to leader")
+  (info (:id state) ": redirecting client " (:src p)
+        "to leader: " (:leader-id state))
   (utils/transmit state {:client-dst (:client-id p)
                          :type :redirect
                          :hostname (get-in state [:peers (:leader-id state) :hostname])
@@ -61,8 +60,7 @@
 
 (defn handle-append-entries-response [state p]
   (if (pos? (get-in p [:body :count])) ; heart beat response
-    (do
-      (check-and-update-append-entries state p))
+    (check-and-update-append-entries state p)
     (update state :clients cs/inc-heartbeats (:src p))))
 
 (defn client-read
