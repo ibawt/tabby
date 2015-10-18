@@ -190,7 +190,6 @@
 (defn start-server
   "Starts the server listening."
   [server port]
-  (info "starting server on port: " port)
   (tcp/start-server
    (fn [s info]
      ((connection-handler server) (wrap-duplex-stream protocol s) info))
@@ -201,7 +200,6 @@
 (defn create-server
   "Creates a network instance of the server."
   [server port]
-  (info "creating server: " (:id server) " on port: " port)
   (let [s (atom server)
         socket (start-server s port)]
     (swap! s merge {:server-socket socket
@@ -212,10 +210,8 @@
   (doall
    (utils/mapf (:peer-sockets server) s/close!))
   (when-let [^java.io.Closeable s (:server-socket server)]
-    (info "stopping server socket: " (:id server))
     (.close s))
 
   (when-let [queue (:rx-stream server)]
-    (info "closing rx queue")
     (s/close! queue))
   (dissoc server :rx-stream :server-socket))

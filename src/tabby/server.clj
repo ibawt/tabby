@@ -67,11 +67,8 @@
   [state pkt]
   (let [[s response] (cs/add-read state pkt)]
     (if (= :broadcast-heart-beat response)
-      (do (warn "broadcasting response")
-          (broadcast-heartbeat s))
-      (do
-        (warn "transmitting old response")
-        (utils/transmit s response)))))
+      (broadcast-heartbeat s)
+      (utils/transmit s response))))
 
 (defn- handle-get [state p]
   (client-read state p))
