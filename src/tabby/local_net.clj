@@ -1,45 +1,39 @@
 (ns tabby.local-net
-  (:require [tabby.net :as net]
-            [tabby.utils :as utils]
-            [tabby.server :as server]
-            [clojure.core.async :refer [close!]]
+  (:require [clojure.tools.logging :refer :all]
+            [manifold.deferred :as d]
             [manifold.stream :as s]
             [tabby.cluster :as cluster]
-            [clojure.tools.logging :refer :all]))
+            [tabby.net :as net]
+            [tabby.server :as server]
+            [tabby.utils :as utils]))
 
 (defn- connect-to-peers [server]
-  (doseq [peer (:peers @server)]
-    (net/connect-to-peer server peer))
-  server)
+  (let [peers (->> (map #(net/connect-to-peer @server %) (:peers @server))
+                   (apply d/zip) ; multiple deferred's into one
+                   (deref)
+                   (into {}))]
+    (swap! server assoc :peers peers)))
 
 (defn- start-server [server & rest]
   (net/create-server server (:port server)))
 
-(defn- connect [server]
+(defn- connect [server timeout]
   (connect-to-peers server)
-  (swap! server assoc :event-loop (net/event-loop server (select-keys @server [:timeout])))
+  (swap! server assoc :event-loop
+         (net/event-loop server timeout))
   server)
 
 (defn- start
   [state]
-  (-> (cluster/foreach-server state start-server) 
-      (cluster/foreach-server connect)))
+  (-> (cluster/foreach-server state start-server)
+      (cluster/foreach-server (fn [s]
+                                (connect s (:timeout state))))))
 
-(defn- stop-server [server]
-  (doall
-   (utils/mapf (:peer-sockets server) s/close!))
-  (when-let [^java.io.Closeable s (:server-socket server)]
-    (info "stopping server socket: " (:id server))
-    (.close s))
-  (when-let [e (:event-loop server)]
-    (info "stopping event loop: " (:id server))
-    (close! e))
-  (merge server {:event-loop nil :server-socket nil}))
 
 (defn- stop [state]
   (cluster/foreach-server state (fn [server]
                                   (if (instance? clojure.lang.Atom server)
-                                    (swap! server stop-server)
+                                    (swap! server net/stop-server)
                                     server))))
 
 (defn- step [state dt]
@@ -56,10 +50,21 @@
   cluster/Cluster
   (init-cluster [this num]
     (-> (merge this (cluster/create base-port num))
-        (update-in [:servers] assign-ports base-port)))
+        (update :servers assign-ports base-port)))
 
   (start-cluster [this]
     (start this))
+
+  (kill-server [this id]
+    (update-in this [:servers id] (fn [x]
+                                    (if (instance? clojure.lang.Atom x)
+                                      (swap! x net/stop-server)
+                                      x))))
+  (rez-server [this id]
+    (update-in this [:servers id] (fn [x]
+                                    (if (instance? clojure.lang.Atom x)
+                                      x
+                                      (connect  (start-server x))))))
 
   (stop-cluster [this]
     (stop this))

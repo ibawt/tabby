@@ -99,7 +99,6 @@
   "returns the update clients hash and either the response or a request
    to broadcast"
   [state pkt]
-  (info "adding a read from: " (:client-id pkt))
   (if-let [old-response (get-in (:clients state) [(:client-id pkt) :history (:uuid pkt)])]
     [(transmit state old-response)]
     [(assoc-in state [:clients (:client-id pkt) :pending-read]

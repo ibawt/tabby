@@ -6,10 +6,9 @@
 ;;; Testing and Development things for cluster testing
 (defn foreach-server
   ([state f]
-   (update-in state [:servers] mapf f))
-
+   (update state :servers mapf f))
   ([state f & args]
-   (update-in state [:servers] mapf f args)))
+   (apply update state :servers mapf f args)))
 
 (defn- find-peers [id servers]
   (into {} (map (fn [[k v]]
@@ -99,6 +98,8 @@
   "cluster methods (test and repl)"
   (init-cluster [this num])
   (start-cluster [this])
+  (kill-server [this id])
+  (rez-server [this id])
   (stop-cluster [this])
   (step-cluster [this dt]))
 
@@ -108,6 +109,8 @@
     (assoc this (create num)))
   (start-cluster [this]
     this)
+  (kill-server [this id])
+  (rez-server [this id])
   (stop-cluster [this]
     this)
   (step-cluster [this dt]
