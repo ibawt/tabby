@@ -118,13 +118,16 @@
                                               (get-in s [:peers peer-id])]))
                 (inc times)))))))
 
+(defmacro dissoc-in [s ks k]
+ `(update-in ~s [~@ks] dissoc ~k))
+
 (defn- send-client-packet
   "send a packect to the client, won't reconnect"
   [state p]
   (let [client (:client-dst p)
         socket (get-in state [:clients client :socket])]
     (if (and socket (s/closed? socket))
-      (update-in state [:clients client] dissoc :socket)
+      (dissoc-in state [:clients client] :socket)
       (do
         (s/put! socket (dissoc p :client-dst))
         state))))
@@ -160,14 +163,17 @@
   (swap! state (fn [s] (server/update-state dt s)))
   true)
 
+(def ^:private default-timeout 10)
+
 (defn event-loop
   "Runs the event loop for a server instance.  Returns a deferred."
-  [state {timeout :timeout}]
+  [state timeout]
   (d/loop [t (current-time)]
     (when-not (empty? (:tx-queue @state))
       (transmit @state)
       (swap! state assoc :tx-queue '()))
-    (-> (d/chain (s/try-take! (:rx-stream @state) ::none 10 ::timeout)
+    (-> (d/chain (s/try-take! (:rx-stream @state) ::none
+                              (or timeout default-timeout) ::timeout)
                  (fn [msg]
                    (when (condp = msg
                              ::none false
@@ -207,7 +213,7 @@
     (info "stopping server socket: " (:id server))
     (.close s))
 
-  (when-let [queue (:rx-queue server)]
+  (when-let [queue (:rx-stream server)]
     (info "closing rx queue")
     (s/close! queue))
   (dissoc server :rx-stream :server-socket))

@@ -6,10 +6,9 @@
 ;;; Testing and Development things for cluster testing
 (defn foreach-server
   ([state f]
-   (update-in state [:servers] mapf f))
-
+   (update state :servers mapf f))
   ([state f & args]
-   (update-in state [:servers] mapf f args)))
+   (apply update state :servers mapf f args)))
 
 (defn- find-peers [id servers]
   (into {} (map (fn [[k v]]

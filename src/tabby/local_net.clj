@@ -17,16 +17,17 @@
 (defn- start-server [server & rest]
   (net/create-server server (:port server)))
 
-(defn- connect [server]
+(defn- connect [server timeout]
   (connect-to-peers server)
   (swap! server assoc :event-loop
-         (net/event-loop server (select-keys @server [:timeout])))
+         (net/event-loop server timeout))
   server)
 
 (defn- start
   [state]
   (-> (cluster/foreach-server state start-server)
-      (cluster/foreach-server connect)))
+      (cluster/foreach-server (fn [s]
+                                (connect s (:timeout state))))))
 
 
 (defn- stop [state]
