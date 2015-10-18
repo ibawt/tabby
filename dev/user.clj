@@ -105,3 +105,7 @@
 
 (defn leader-clients []
   (:clients (unatom (second (find-leader)))))
+
+(defn testy []
+  (reset)
+  (set-value :a "a"))

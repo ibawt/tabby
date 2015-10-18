@@ -54,7 +54,8 @@
   (info (:id @state) " accepting peer connection from: " (:src handshake))
   (when-not (get-in @state [:peers (:src handshake) :socket])
     (swap! state assoc-in [:peers (:src handshake) :socket] socket))
-  (s/connect socket (:rx-stream @state)))
+  (s/connect socket (:rx-stream @state)
+             {:downstream? false}))
 
 (defn- connect-table-tennis-socket
   ":ping -> :pong"
@@ -75,7 +76,8 @@
     (info (:id @state) "client connected: " client-index)
     (swap! state update :clients cs/create-client client-index socket)
     (s/connect (s/map #(assoc % :client-id client-index) socket)
-               (:rx-stream @state))))
+               (:rx-stream @state)
+               {:downstream? false})))
 
 (defn- connection-handler
   "Returns a function that will handle the handshake for incoming connections."
