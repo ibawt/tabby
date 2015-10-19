@@ -86,7 +86,7 @@
     (d/let-flow
      [handshake (s/take! s)]
      (-> ((condp = (:type handshake)
-            :peering-handshake connect-peer-socket 
+            :peering-handshake connect-peer-socket
             :table-tennis connect-table-tennis-socket
             :client-handshake connect-client-socket
             (fn [&_]
@@ -100,25 +100,22 @@
 (defn connect-to-peer
   "deferred connect version, returns just the socket in a defered"
   [state [id peer]]
+  (info (:id state) " connecting to peer: " id)
   (-> (d/let-flow [socket (client (:hostname peer) (:port peer))
                    _ (s/put! socket {:src (:id state) :type :peering-handshake})]
                   [id (assoc peer :socket socket)])
       (d/catch (fn [ex]
-                 (warn ex "caught exception in connect")))))
+                 (warn (:id state) "caught exception in connecting to: " id)))))
 
 (defn- send-peer-packet
   "sends a packet to the appropriate peer socket, will reconnect"
   [state p]
   ;;; TODO: refactor
-  (let [peer-id (:dst p)]
-   (loop [s state times 0]
-     (let [socket (get-in s [:peers peer-id :socket])]
-       (if (and socket (not (s/closed? socket)))
-         (do
-           (s/put! socket p) s)
-         (recur (assoc-in @(connect-to-peer s [peer-id
-                                              (get-in s [:peers peer-id])]))
-                (inc times)))))))
+  (let [peer-id (:dst p)
+        socket (get-in state [:peers peer-id :socket])]
+    (if (and socket (not (s/closed? socket)))
+      @(s/put! socket p)
+      false)))
 
 (defmacro dissoc-in [s ks k]
  `(update-in ~s [~@ks] dissoc ~k))
@@ -142,14 +139,22 @@
     (:client-dst p) (send-client-packet state p)
     :else (assert false "invalid packet")))
 
+(defn- reconnect-to-peer [state peer-id]
+  (d/future
+    (let [socket @(connect-to-peer @state [peer-id
+                                           (get-in @state [:peers peer-id])])]
+      (swap! state assoc-in [:peers peer-id :socket] socket))))
+
 (defn- transmit
   "sends all the currently queued packets"
   [state]
-  (loop [pkts (:tx-queue state)
-         s state]
+  (loop [pkts (:tx-queue @state)]
     (if (empty? pkts)
-      (assoc s :tx-queue '())
-      (recur (rest pkts) (send-pkt s (first pkts))))))
+      (swap! state assoc :tx-queue '())
+      (let [sent (send-pkt @state (first pkts))]
+        (when-not sent
+          (reconnect-to-peer state (:dst (first pkts))))
+        (recur (rest pkts))))))
 
 (defn- handle-rx-pkt
   "appends the pkt and runs update"
@@ -172,8 +177,7 @@
   [state timeout]
   (d/loop [t (current-time)]
     (when-not (empty? (:tx-queue @state))
-      (transmit @state)
-      (swap! state assoc :tx-queue '()))
+      (transmit state))
     (-> (d/chain (s/try-take! (:rx-stream @state) ::none
                               (or timeout default-timeout) ::timeout)
                  (fn [msg]

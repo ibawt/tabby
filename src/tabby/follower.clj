@@ -12,7 +12,7 @@
   (let [r {:term (:current-term state)
            :vote-granted?
            (and (valid-term? state params)
-                (nil? (:voted-for state))
+                (not (:voted-for state))
                 (prev-log-term-equals? state params))}]
     {:response r
      :state (if (:vote-granted? r)
@@ -64,4 +64,4 @@
       (assoc :election-timeout (random-election-timeout))
       (assoc :leader-id leader-id)
       (assoc :type :follower)
-      (assoc :voted-for nil)))
+      (dissoc :voted-for)))

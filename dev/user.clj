@@ -108,4 +108,5 @@
 
 (defn testy []
   (reset)
+  (Thread/sleep 200)
   (set-value :a "a"))
