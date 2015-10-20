@@ -50,15 +50,18 @@
   (start)
   :ready)
 
+(defn to-name [x]
+  (str x ".localnet:" x))
+
 (defn kill
   "not done yet"
   [n]
-  (alter-var-root #'cluster cluster/kill-server (str n ".localnet:" n)))
+  (alter-var-root #'cluster cluster/kill-server (to-name n)))
 
 (defn rez
   "not done yet"
   [n]
-  (alter-var-root #'cluster cluster/rez-server n))
+  (alter-var-root #'cluster cluster/rez-server (to-name n)))
 
 (defn reset []
   (try

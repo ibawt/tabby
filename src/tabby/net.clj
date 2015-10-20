@@ -114,7 +114,7 @@
   (let [peer-id (:dst p)
         socket (get-in state [:peers peer-id :socket])]
     (if (and socket (not (s/closed? socket)))
-      @(s/put! socket p)
+      (s/put! socket p)
       false)))
 
 (defmacro dissoc-in [s ks k]
@@ -140,10 +140,18 @@
     :else (assert false "invalid packet")))
 
 (defn- reconnect-to-peer [state peer-id]
-  (d/future
-    (let [socket @(connect-to-peer @state [peer-id
-                                           (get-in @state [:peers peer-id])])]
-      (swap! state assoc-in [:peers peer-id :socket] socket))))
+  (when-not (get-in @state [:peers peer-id :connect-pending])
+    (swap! state assoc-in [:peers peer-id :connect-pending] true)
+    (d/future
+      (-> (d/chain
+           (connect-to-peer @state [peer-id (get-in @state [:peers peer-id])])
+           (fn [socket]
+             (swap! state (fn [s]
+                            (-> (assoc-in s [:peers peer-id :socket] socket)
+                                (dissoc [:peers peer-id :connect-pending])))))
+           (d/catch (fn [ex]
+                      (swap! state update-in [:peers peer-id] dissoc :connect-pending)
+                      (warn "cauguht exception in reconnect-to-peer"))))))))
 
 (defn- transmit
   "sends all the currently queued packets"

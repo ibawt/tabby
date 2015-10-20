@@ -64,7 +64,7 @@
     (update-in this [:servers id] (fn [x]
                                     (if (instance? clojure.lang.Atom x)
                                       x
-                                      (connect  (start-server x))))))
+                                      (connect (start-server x) (:timeout this))))))
 
   (stop-cluster [this]
     (stop this))
