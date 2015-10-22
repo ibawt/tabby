@@ -148,10 +148,10 @@
            (fn [socket]
              (swap! state (fn [s]
                             (-> (assoc-in s [:peers peer-id :socket] socket)
-                                (dissoc [:peers peer-id :connect-pending])))))
-           (d/catch (fn [ex]
-                      (swap! state update-in [:peers peer-id] dissoc :connect-pending)
-                      (warn "cauguht exception in reconnect-to-peer"))))))))
+                                (dissoc [:peers peer-id :connect-pending]))))))
+          (d/catch (fn [ex]
+                     (swap! state update-in [:peers peer-id] dissoc :connect-pending)
+                     (warn "cauguht exception in reconnect-to-peer")))))))
 
 (defn- transmit
   "sends all the currently queued packets"
