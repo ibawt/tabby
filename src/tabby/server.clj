@@ -52,7 +52,9 @@
 
 (defn- handle-set [state p]
   (cs/add-write
-   (write state (select-keys p [:key :value]))
+   (write state {:key (:key p)
+                 :value (:value p)
+                 :op :set})
    p))
 
 (defn- handle-cas [state p]

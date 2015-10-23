@@ -99,10 +99,13 @@
 (defn check-and-update-append-entries [state p]
   (check-commit-index (update-match-and-next state p)))
 
-(defn write [state kv]
+(defn write
+  "Appends the command into the log and then broadcasts
+   apply entries to all peers"
+  [state cmd]
   (->
    state
-   (update :log conj {:term (:current-term state) :cmd kv})
+   (update :log conj {:term (:current-term state) :cmd cmd})
    (broadcast-heart-beat)))
 
 (defn check-backlog

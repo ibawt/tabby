@@ -1,5 +1,5 @@
 (ns tabby.log
-  (:require [tabby.utils :refer :all]))
+  (:require [clojure.tools.logging :refer [warn info]]))
 
 ;;; Log functions
 (defn last-log-index
@@ -42,8 +42,10 @@
       (= (get-log-term state p-index) p-term)))
 
 (defn apply-entry [{log :log index :last-applied} db]
-  (let [{key :key value :value} (:cmd (get log index))]
-    (merge db {key value})))
+  (let [{key :key value :value op :op} (:cmd (get log index))]
+    (condp = op
+      :set (merge db {key value})
+      :noop db)))
 
 (defn read-value [state key]
   (get (:db state) key))
