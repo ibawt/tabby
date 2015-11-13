@@ -1,21 +1,21 @@
 (ns tabby.cluster
   (:require [tabby.server :as server]
             [clojure.tools.logging :refer :all]
-            [tabby.utils :refer :all]))
+            [tabby.utils :as utils]))
 
 ;;; Testing and Development things for cluster testing
 (defn foreach-server
   ([state f]
-   (update state :servers mapf f))
+   (update state :servers utils/mapf f))
   ([state f & args]
-   (apply update state :servers mapf f args)))
+   (apply update state :servers utils/mapf f args)))
 
 (defn- find-peers [id servers]
   (into {} (map (fn [[k v]]
                   [k (select-keys v [:hostname :port])]) (filterv (fn [[k v]] (not= k id)) servers))))
 
 (defn- set-peers [servers]
-  (mapf servers (fn [v]
+  (utils/mapf servers (fn [v]
                   (server/set-peers v (find-peers (:id v) servers)))))
 
 (defn write [k cluster]
@@ -37,12 +37,12 @@
                   (filter (partial valid-packet-for cluster id) (:tx-queue s))) (:servers cluster))))
 
 (defn collect-rx-packets [system]
-  (update-in system [:servers] mapf
+  (update-in system [:servers] utils/mapf
              (fn [v]
                (update-in v [:rx-queue] concat (collect-packets system (:id v))))))
 
 (defn clear-tx-packets [system]
-  (update-in system [:servers] mapf assoc :tx-queue '()))
+  (update-in system [:servers] utils/mapf assoc :tx-queue '()))
 
 (defn pump-transmit-queues [system]
   (-> system
@@ -52,7 +52,7 @@
 (defn step [dt system]
   (-> system
       (pump-transmit-queues)
-      (update :servers mapf (partial server/update-state dt))
+      (update :servers utils/mapf (partial server/update-state dt))
       (update :time + dt)))
 
 (defn step-times [dt times system]
@@ -76,7 +76,7 @@
   (select-keys (get (:servers cluster) id) [:tx-queue :rx-queue]))
 
 (defn print-fields [cluster & rest]
-  (mapf (:servers cluster) #(select-keys % (reverse rest))))
+  (utils/mapf (:servers cluster) #(select-keys % (reverse rest))))
 
 (defn ps [cluster]
   (print-fields cluster :id :type :election-timeout :current-term :commit-index))
