@@ -1,6 +1,6 @@
 (ns tabby.cluster
   (:require [tabby.server :as server]
-            [clojure.tools.logging :refer :all]
+            [clojure.tools.logging :refer [warn info]]
             [tabby.utils :as utils]))
 
 ;;; Testing and Development things for cluster testing

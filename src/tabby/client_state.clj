@@ -1,9 +1,9 @@
 (ns tabby.client-state
-  (:require [clojure.tools.logging :refer :all]
+  (:require [clojure.tools.logging :refer [warn info]]
             [manifold.stream :as s]
             [tabby.leader :as l]
             [tabby.log :as log]
-            [tabby.utils :refer :all]))
+            [tabby.utils :as utils]))
 
 (defn create-client
   "puts a new client into the supplied clients map"
@@ -27,10 +27,10 @@
   (not (empty? (:pending-read client))))
 
 (defn inc-heartbeats [clients src]
-  (mapf clients (fn [client]
-                  (if (has-reads? client)
-                    (update-in client [:pending-read :hb-count] conj src)
-                    client))))
+  (utils/mapf clients (fn [client]
+                        (if (has-reads? client)
+                          (update-in client [:pending-read :hb-count] conj src)
+                          client))))
 
 (defn- handle-read-cas
   [client-id client state]
@@ -44,21 +44,21 @@
        (l/write state {:key (:key cas)
                        :value (:new cas)})]
       [[client-id (assoc client :pending-read {})]
-         (transmit state {:client-dst client-id :uuid (:uuid r)
-                          :type :cas-reply :body {:value :invalid-value}})])))
+         (utils/transmit state {:client-dst client-id :uuid (:uuid r)
+                                :type :cas-reply :body {:value :invalid-value}})])))
 
 (defn- check-reads
   "takes a client-id client map pair and a state and returns the same
    but updated."
   [[client-id client] state]
   (if (and (has-reads? client)
-           (quorum? (count (:peers state))
+           (utils/quorum? (count (:peers state))
                     (inc (count (:hb-count (:pending-read client)))))) ; count yourself
     (if (get-in client [:pending-read :cas])
       (handle-read-cas client-id client state)
       [[client-id (assoc client :pending-read {})]
-       (transmit state {:client-dst client-id :uuid (:uuid (:pending-read client))
-                        :body {:value (log/read-value state (:key (:pending-read client)))}})])
+       (utils/transmit state {:client-dst client-id :uuid (:uuid (:pending-read client))
+                              :body {:value (log/read-value state (:key (:pending-read client)))}})])
     [[client-id client] state]))
 
 (defn- check-writes [[client-id client] state]
@@ -66,7 +66,7 @@
            (>= (:commit-index state)
                (:target-commit-index (:pending-write client))))
     [[client-id (assoc client :pending-write {})]
-     (transmit state {:type :write-reply :client-dst client-id
+     (utils/transmit state {:type :write-reply :client-dst client-id
                       :uuid (:uuid (:pending-write client))
                       :body {:value :ok}})]
     [[client-id client] state]))
@@ -100,7 +100,7 @@
    to broadcast"
   [state pkt]
   (if-let [old-response (get-in (:clients state) [(:client-id pkt) :history (:uuid pkt)])]
-    [(transmit state old-response)]
+    [(utils/transmit state old-response)]
     [(assoc-in state [:clients (:client-id pkt) :pending-read]
                {:uuid (:uuid pkt) :key (:key pkt) :hb-count #{}}) :broadcast-heart-beat]))
 
