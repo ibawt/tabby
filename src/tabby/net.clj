@@ -218,7 +218,9 @@
                     :rx-stream (s/stream rx-buffer-size)})
     s))
 
-(defn stop-server [server]
+(defn stop-server
+  "Stops the server listening socket and rx stream"
+  [server]
   (doall
    (utils/mapf (:peer-sockets server) s/close!))
   (when-let [^java.io.Closeable s (:server-socket server)]
