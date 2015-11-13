@@ -1,5 +1,5 @@
 (ns tabby.local-net
-  (:require [clojure.tools.logging :refer :all]
+  (:require [clojure.tools.logging :refer [warn info]]
             [manifold.deferred :as d]
             [manifold.stream :as s]
             [tabby.cluster :as cluster]

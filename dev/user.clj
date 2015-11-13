@@ -7,10 +7,13 @@
             [tabby.local-net :as local-net]
             [clojure.tools.namespace.repl :refer [refresh]]))
 
-(def cluster-maker
-  (partial local-net/create-network-cluster 10 8090))
+(defn cluster-maker
+  "Makes a cluster"
+  []
+  (local-net/create-network-cluster 10 8090))
 
-(defonce cluster (cluster-maker))
+(def cluster
+  (cluster-maker))
 
 (defn- local-client []
   (client/make-local-client [{:host "127.0.0.1" :port 8090}

@@ -14,5 +14,5 @@
   :main tabby.core
   :repl-options {:init-ns user}
   :profiles {:uberjar {:aot :all}
-             :dev {:dependencies [[org.clojure/tools.namespace "0.2.10"]]
+             :dev {:dependencies [[org.clojure/tools.namespace "0.2.11"]]
                    :source-paths ["dev"]}})

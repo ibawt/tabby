@@ -137,6 +137,15 @@
        (step 10)
        (until-empty)))
 
+(deftest leadership-change
+  (testing "a new leader should be chosen"
+    (let [s (->
+             (testy)
+             (kill-server 0)
+             (step 75)
+             (until-empty))]
+      (is (= #{:leader :candidate} (into #{} (filter #(not= 0 (first %)) (:servers s))))))))
+
 (deftest test-log-catch-up
   (testing "log is missing 1"
     (let [s (->> (test-cluster 3)

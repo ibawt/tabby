@@ -1,5 +1,6 @@
 (ns tabby.log
-  (:require [clojure.tools.logging :refer [warn info]]))
+  (:require [clojure.tools.logging :refer [warn info]]
+            [tabby.utils :as utils]))
 
 ;;; Log functions
 (defn last-log-index
@@ -29,7 +30,7 @@
 
 (defn append-log [state params]
   (let [s (-> state
-              (assoc :election-timeout (random-election-timeout))
+              (assoc :election-timeout (utils/random-election-timeout))
               (apply-log (:entries params)))]
     (if (> (:leader-commit params) (:commit-index state))
       (assoc s :commit-index

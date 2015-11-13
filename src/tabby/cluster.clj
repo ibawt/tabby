@@ -18,13 +18,6 @@
   (mapf servers (fn [v]
                   (server/set-peers v (find-peers (:id v) servers)))))
 
-(defn create [baseport num]
-  (let [servers (reduce #(merge %1 {(str %2 ".localnet:" %2)
-                                    (merge (server/create-server (str %2 ".localnet:" %2))
-                                           {:hostname "localhost" :port (+ baseport %2)})}) {} (range num))]
-    {:time 0
-     :servers (set-peers servers)}))
-
 (defn write [k cluster]
   (let [[id leader] (first (filter (fn [[k v]] (= :leader (:type v))) (:servers cluster)))]
     (update-in cluster [:servers id] (fn [s] (server/handle-write s k)))))
@@ -59,8 +52,8 @@
 (defn step [dt system]
   (-> system
       (pump-transmit-queues)
-      (update-in [:servers] mapf (partial server/update-state dt))
-      (update-in [:time] + dt)))
+      (update :servers mapf (partial server/update-state dt))
+      (update :time + dt)))
 
 (defn step-times [dt times system]
   (loop [s system
@@ -103,18 +96,35 @@
   (stop-cluster [this])
   (step-cluster [this dt]))
 
+(declare create)
+
 (defrecord NoNetworkCluster [servers time]
   Cluster
   (init-cluster [this num]
     (assoc this (create num)))
   (start-cluster [this]
     this)
-  (kill-server [this id])
+  (kill-server
+   [this id]
+   (loop [others (filter #(not= id %) (keys (:servers this)))
+          this this]
+     (if (empty? others)
+       this
+       (recur (rest others)
+              (add-packet-loss id (first others))))))
+
   (rez-server [this id])
   (stop-cluster [this]
     this)
   (step-cluster [this dt]
     (step dt this)))
 
+(defn create [baseport num]
+  (let [servers (reduce #(merge %1 {(str %2 ".localnet:" %2)
+                                    (merge (server/create-server (str %2 ".localnet:" %2))
+                                           {:hostname "localhost" :port (+ baseport %2)})}) {} (range num))]
+    (->NoNetworkCluster (set-peers servers) 0)))
+
 (defn create-no-network-cluster [num]
   (map->NoNetworkCluster (create num)))
+
