@@ -1,11 +1,11 @@
 (ns tabby.server
   (:require [tabby.utils :as utils]
-            [tabby.log :refer :all]
+            [tabby.log :as log]
             [tabby.client-state :as cs]
-            [tabby.leader :refer :all]
-            [tabby.follower :refer :all]
-            [clojure.tools.logging :refer :all]
-            [tabby.candidate :refer :all]))
+            [tabby.leader :as l]
+            [tabby.follower :as f]
+            [clojure.tools.logging :refer [warn info]]
+            [tabby.candidate :as c]))
 
 ;;; Utility Functions
 (defn packet-count
@@ -24,8 +24,8 @@
             (and (= :candidate (:type state))
                  (= :append-entries (:type params))
                  (<= (:current-term state) (:term body))))
-      (become-follower (assoc state :current-term (:term body))
-                       (:leader-id body))
+      (f/become-follower (assoc state :current-term (:term body))
+                         (:leader-id body))
       (if (:leader-id body)
         (assoc state :leader-id (:leader-id body))
         state))))
@@ -33,7 +33,7 @@
 (defn- apply-commit-index [state]
   (if (> (:commit-index state) (:last-applied state))
     (-> (update state :last-applied inc)
-        (update :db #(apply-entry state %)))
+        (update :db #(log/apply-entry state %)))
     state))
 
 (defn- redirect-to-leader [state p]
@@ -52,9 +52,9 @@
 
 (defn- handle-set [state p]
   (cs/add-write
-   (write state {:key (:key p)
-                 :value (:value p)
-                 :op :set})
+   (l/write state {:key (:key p)
+                   :value (:value p)
+                   :op :set})
    p))
 
 (defn- handle-cas [state p]
@@ -62,29 +62,30 @@
 
 (defn handle-append-entries-response [state p]
   (if (pos? (get-in p [:body :count])) ; heart beat response
-    (check-and-update-append-entries state p)
+    (l/check-and-update-append-entries state p)
     (update state :clients cs/inc-heartbeats (:src p))))
 
 (defn client-read
   [state pkt]
   (let [[s response] (cs/add-read state pkt)]
     (if (= :broadcast-heart-beat response)
-      (broadcast-heartbeat s)
+      (l/broadcast-heartbeat s)
       (utils/transmit s response))))
 
 (defn- handle-get [state p]
   (client-read state p))
 
-(defn- handle-packet [state]
+(defn- handle-packet
+  [state]
   (let [p (first (:rx-queue state))
         s (check-term state p)]
     (condp = (:type p)
       :get (handle handle-get s p)
       :set (handle handle-set s p)
       :cas (handle handle-cas s p)
-      :request-vote (handle-request-vote s p)
-      :request-vote-reply (handle-request-vote-response s p)
-      :append-entries (handle-append-entries s p)
+      :request-vote (f/handle-request-vote s p)
+      :request-vote-reply (c/handle-request-vote-response s p)
+      :append-entries (f/handle-append-entries s p)
       :append-entries-response (handle-append-entries-response s p))))
 
 (defn- process-rx-packets [state]
@@ -97,9 +98,9 @@
   (->
    (update state :election-timeout - dt)
    (apply-commit-index)
-   (utils/if-not-leader? check-election-timeout)
+   (utils/if-not-leader? f/check-election-timeout)
    (process-rx-packets)
-   (utils/if-leader? check-backlog dt)
+   (utils/if-leader? l/check-backlog dt)
    (utils/if-leader? cs/check-clients)))
 
 (defn set-peers [state peers]
