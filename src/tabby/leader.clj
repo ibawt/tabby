@@ -1,14 +1,14 @@
 (ns tabby.leader
-  (:require [tabby.log :refer :all]
-            [tabby.utils :refer :all]
-            [clojure.tools.logging :refer :all]))
+  (:require [tabby.log :as log]
+            [tabby.utils :as utils]
+            [clojure.tools.logging :refer [warn info]]))
 
 (defn- heart-beat-timeout []
   (+ (rand-int 15) 15))
 
 (defn- make-append-log-pkt [state peer]
   (let [p-index (dec (get (:next-index state) peer))
-        p-term (get-log-term state p-index)]
+        p-term (log/get-log-term state p-index)]
     {:dst peer
      :type :append-entries
      :src (:id state)
@@ -16,12 +16,12 @@
             :leader-id (:id state)
             :prev-log-index p-index
             :prev-log-term p-term
-            :entries [(get-log-at state (inc p-index))]
+            :entries [(log/get-log-at state (inc p-index))]
             :leader-commit (:commit-index state)}}))
 
 (defn- make-heart-beat-pkt [state peer]
   (let [p-index (count (:log state))
-        p-term (get-log-term state p-index)]
+        p-term (log/get-log-term state p-index)]
     {:dst peer
      :type :append-entries
      :src (:id state)
@@ -33,8 +33,8 @@
             :leader-commit (:commit-index state)}}))
 
 (defn broadcast-heartbeat [state]
-  (foreach-peer state (fn [s [p v]]
-                        (transmit s (make-heart-beat-pkt s p)))))
+  (utils/foreach-peer state (fn [s [p v]]
+                              (utils/transmit s (make-heart-beat-pkt s p)))))
 
 (defn- peer-timeout?
   "checks if the peer is ready to send another heartbeat"
@@ -42,7 +42,7 @@
   (<= (get (:next-timeout state) peer) 0))
 
 (defn- apply-peer-timeouts [state dt]
-  (update-in state [:next-timeout] mapf - dt))
+  (update state :next-timeout utils/mapf - dt))
 
 (def ^:private peer-next-timeout 75)
 
@@ -50,15 +50,15 @@
   (assoc-in state [:next-timeout peer] peer-next-timeout))
 
 (defn- send-peer-update [state [peer value]]
-  (transmit state
-            (if (> (last-log-index state) (get (:match-index state) peer))
+  (utils/transmit state
+            (if (> (log/last-log-index state) (get (:match-index state) peer))
               (make-append-log-pkt state peer)
               (make-heart-beat-pkt state peer))))
 
 (defn- broadcast-heart-beat [state]
   (->
-   (foreach-peer state send-peer-update)
-   (update :next-timeout mapf (constantly peer-next-timeout))))
+   (utils/foreach-peer state send-peer-update)
+   (update :next-timeout utils/mapf (constantly peer-next-timeout))))
 
 (defn- update-match-and-next [state p]
   (let [s (if-not (:success (:body p))
@@ -78,7 +78,7 @@
 
 (defn- check-commit-index [state]
   (let [[index c] (highest-match-index state)]
-    (if (and (quorum? (count (:peers state)) (inc c))
+    (if (and (utils/quorum? (count (:peers state)) (inc c))
              (> index (:commit-index state)))
       (assoc state :commit-index index)
       state)))
@@ -104,15 +104,14 @@
    apply entries to all peers"
   [state cmd]
   (->
-   state
-   (update :log conj {:term (:current-term state) :cmd cmd})
+   (update state :log conj {:term (:current-term state) :cmd cmd})
    (broadcast-heart-beat)))
 
 (defn check-backlog
   "broadcast peer updates by checking against
   an internal throttle"
   [state dt]
-  (foreach-peer (apply-peer-timeouts state dt)
+  (utils/foreach-peer (apply-peer-timeouts state dt)
                 (fn [s [p v]]
                   (if (peer-timeout? s p)
                     (-> (send-peer-update s [p])
