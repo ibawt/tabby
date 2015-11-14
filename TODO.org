@@ -1,0 +1,12 @@
+* Things to work on:
+** TODO redo client to return only deferreds
+** TODO cluster needs add-packet-loss fixed/tested
+** TODO leadership change needs to be fixed/tested
+** TODO tests are flaky 
+** TODO finish main to allow for standalone running
+** TODO write jepsen adapter
+** TODO run jepsen tests
+** TODO benchmark/profile
+** TODO write a component adapter
+** TODO make sure every function has a docstring
+** TODO clean up all the TODO:'s in the code base
