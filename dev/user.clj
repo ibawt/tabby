@@ -76,18 +76,18 @@
       (warn e "caught exception in reset!!!"))))
 
 (defn set-value [key value]
-  (let [[kk {code :value}] (client/set-or-create klient key value)]
+  (let [[kk {code :value}] @(client/set-or-create klient key value)]
     (when kk
       (alter-var-root #'klient (constantly kk)))
     code))
 
 (defn get-value [key]
-  (let [[kk {value :value}] (client/get-value klient key)]
+  (let [[kk {value :value}] @(client/get-value klient key)]
     (alter-var-root #'klient (constantly kk))
     value))
 
 (defn compare-and-swap [key new old]
-  (let [[kk {value :value}] (client/compare-and-swap klient key new old)]
+  (let [[kk {value :value}] @(client/compare-and-swap klient key new old)]
     (alter-var-root #'klient (constantly kk))
     value))
 
