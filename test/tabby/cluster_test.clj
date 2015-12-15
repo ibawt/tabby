@@ -1,7 +1,8 @@
 (ns tabby.cluster-test
   (:require [clojure.test :refer :all]
             [clojure.tools.logging :refer :all]
-            [tabby.cluster :refer :all]))
+            [tabby.cluster :refer :all]
+            [tabby.utils :as utils]))
 
 (defn fields-by-id [cluster field]
   (map field (vals (sort (:servers cluster)))))
@@ -130,21 +131,32 @@
       (is (= 2 (get-in s [:servers (s-at 0) :current-term]))))))
 
 (defn testy []
-  (->> (test-cluster 5)
+  (->> (test-cluster 3)
        (until-empty)
        (write {:a "a"})
        (until-empty)
        (step 10)
        (until-empty)))
 
+(defn server-types
+  "returns a set of the server types"
+  [s]
+  ;; (transduce (comp (map (comp :type second)) (filter #(not= (s-at 0) (first %))))
+  ;;            conj #{} (:servers s))
+  (into #{} (map (comp :type second) (filter #(not= (s-at 0) (first %)) (:servers s)))))
+
 (deftest leadership-change
   (testing "a new leader should be chosen"
     (let [s (->
              (testy)
-             (kill-server 0)
-             (step 75)
-             (until-empty))]
-      (is (= #{:leader :candidate} (into #{} (filter #(not= 0 (first %)) (:servers s))))))))
+             (kill-server (s-at 0))
+             (#(step 175 %))
+             (until-empty)
+             (#(step 75 %))
+             (until-empty)
+             (#(step 75 %)))
+          ]
+      (is (= #{:leader :candidate} (server-types s))))))
 
 (deftest test-log-catch-up
   (testing "log is missing 1"

@@ -111,7 +111,7 @@
      (if (empty? others)
        this
        (recur (rest others)
-              (add-packet-loss id (first others))))))
+              (add-packet-loss id (first others) this)))))
 
   (rez-server [this id])
   (stop-cluster [this]
