@@ -106,7 +106,7 @@
 
 (defn find-leader []
   (reduce-kv (fn [_ k v]
-               (if (= :leader (:type (if (instance? clojure.lang.Atom v) @v v)))
+               (if (= :leader (:type (unatom v)))
                  (reduced [k v]) _)) nil (:servers cluster)))
 
 (defn leader-clients []
