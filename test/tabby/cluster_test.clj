@@ -154,9 +154,8 @@
              (until-empty)
              (#(step 75 %))
              (until-empty)
-             (#(step 75 %)))
-          ]
-      (is (= #{:leader :candidate} (server-types s))))))
+             (#(step 75 %)))]
+      (is (= #{:leader :follower} (server-types s))))))
 
 (deftest test-log-catch-up
   (testing "log is missing 1"

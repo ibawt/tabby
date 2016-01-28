@@ -54,7 +54,9 @@
   :ready)
 
 (defn to-name [x]
-  (str x ".localnet:" x))
+  (if (instance? String x)
+    x
+    (str x ".localnet:" x)))
 
 (defn kill
   "not done yet"
@@ -111,6 +113,15 @@
 
 (defn leader-clients []
   (:clients (unatom (second (find-leader)))))
+
+(defn followers []
+  (map first (filter (fn [[k v]]
+                       (not= :leader (:type (unatom v)))) (:servers cluster))))
+
+(defn kill-random-follower []
+  (let [id (first (shuffle (followers)))]
+    (kill id)
+    id))
 
 (defn testy []
   (reset)
