@@ -151,7 +151,7 @@
                                 (dissoc [:peers peer-id :connect-pending]))))))
           (d/catch (fn [ex]
                      (swap! state update-in [:peers peer-id] dissoc :connect-pending)
-                     (warn "cauguht exception in reconnect-to-peer")))))))
+                     (warn ex "[" (:id @state) "] caught exception in reconnect-to-peer")))))))
 
 (defn- transmit
   "sends all the currently queued packets"
@@ -195,7 +195,7 @@
                              (handle-rx-pkt state (delta-t t) msg))
                      (d/recur (current-time)))))
         (d/catch (fn [ex]
-                   (warn ex "caught exception in event loop")
+                   (warn ex (:id @state) ": caught exception in event loop")
                    (s/close! (:rx-stream @state)))))))
 
 

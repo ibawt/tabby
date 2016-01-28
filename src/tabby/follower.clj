@@ -21,6 +21,8 @@
 
 ;;; TODO: refactor this shit show
 (defn- append-entries [state params]
+  (if (> 0 (count (:entries params)))
+      (warn (:id state) " append-entries: " params))
   (let [r {:term (:current-term state)
            :count (count (:entries params))
            :success (and (utils/valid-term? state params)
@@ -48,6 +50,7 @@
 (defn handle-append-entries
   "append entries packet"
   [state p]
+  ;; (warn "[" (:id state) "] append entries:" p)
   (let [r (append-entries state (:body p))]
     (utils/transmit (:state r) {:dst (:src p) :src (:id state)
                                 :type :append-entries-response

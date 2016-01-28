@@ -32,8 +32,9 @@
 
 (defn- apply-commit-index [state]
   (if (> (:commit-index state) (:last-applied state))
-    (-> (update state :last-applied inc)
-        (update :db #(log/apply-entry state %)))
+    (do
+     (-> (update state :last-applied inc)
+         (update :db #(log/apply-entry state %))))
     state))
 
 (defn- redirect-to-leader [state p]
@@ -51,11 +52,11 @@
     (redirect-to-leader s p)))
 
 (defn- handle-set [state p]
-  (cs/add-write
-   (l/write state {:key (:key p)
-                   :value (:value p)
-                   :op :set})
-   p))
+  (-> state
+      (l/write {:key (:key p)
+                :value (:value p)
+                :op :set})
+      (cs/add-write p)))
 
 (defn- handle-cas [state p]
   (cs/add-cas state p))
@@ -111,7 +112,7 @@
 
 (defn create-server [id]
   {:current-term 0
-   :log []
+   :log [{:term 0 :cmd {:op :reset}}]
    :id id
    :tx-queue '()
    :rx-queue '()

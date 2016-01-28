@@ -7,16 +7,17 @@
   (+ (rand-int 15) 15))
 
 (defn- make-append-log-pkt [state peer]
-  (let [p-index (dec (get (:next-index state) peer))
-        p-term (log/get-log-term state p-index)]
+  (let [prev-index (dec (get (:next-index state) peer))
+        prev-term (log/get-log-term state prev-index)]
+    ;; (warn "sending to:" peer " log[" p-index "] term = " p-term)
     {:dst peer
      :type :append-entries
      :src (:id state)
      :body {:term (:current-term state)
             :leader-id (:id state)
-            :prev-log-index p-index
-            :prev-log-term p-term
-            :entries [(log/get-log-at state (inc p-index))]
+            :prev-log-index prev-index
+            :prev-log-term prev-term
+            :entries [(log/get-log-at state (inc prev-index))]
             :leader-commit (:commit-index state)}}))
 
 (defn- make-heart-beat-pkt [state peer]
@@ -87,14 +88,6 @@
   (into {} (for [[p _] (:peers state)]
              [p (f)])))
 
-(defn become-leader [state]
-  (info (:id state) " becoming leader")
-  (broadcast-heart-beat
-   (merge state
-          {:type :leader
-           :next-timeout (make-peer-map state (constantly peer-next-timeout))
-           :next-index (make-peer-map state  #(inc (count (:log state))))
-           :match-index (make-peer-map state (constantly 0))})))
 
 (defn check-and-update-append-entries [state p]
   (check-commit-index (update-match-and-next state p)))
@@ -106,6 +99,16 @@
   (->
    (update state :log conj {:term (:current-term state) :cmd cmd})
    (broadcast-heart-beat)))
+
+(defn become-leader [state]
+  (info (:id state) " becoming leader: term = " (:current-term state))
+  (-> (update state :log conj {:term (:current-term state) :cmd {:op :noop}})
+      (merge
+          {:type :leader
+           :next-timeout (make-peer-map state (constantly peer-next-timeout))
+           :next-index (make-peer-map state  #(inc (count (:log state))))
+           :match-index (make-peer-map state (constantly 0))})
+      (broadcast-heart-beat)))
 
 (defn check-backlog
   "broadcast peer updates by checking against

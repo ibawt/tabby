@@ -1,8 +1,9 @@
-(ns tabby.utils)
+(ns tabby.utils
+  (:require [clojure.tools.logging :refer [warn info]]))
 
 (defmacro dbg [& body]
   `(let [x# ~body]
-     (println (quote ~body) "=" x#) x#))
+     (warn (quote ~body) "=" x#) x#))
 
 (defn mapf
   "apply f to each value of m and return the updated m"

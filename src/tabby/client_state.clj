@@ -115,6 +115,6 @@
   (update state :clients
           (fn [clients]
             (doseq [[k v] clients]
-              (if (:socket v)
+              (when (:socket v)
                 (s/close! (:socket v))))
             nil)))
