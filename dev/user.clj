@@ -126,4 +126,8 @@
 (defn testy []
   (reset)
   (Thread/sleep 200)
-  (set-value :a "a"))
+  (println "leader: " (first (find-leader)))
+  (assert (= :ok (set-value :a "a")))
+  (Thread/sleep 200)
+  (kill-random-follower)
+  (assert (= :ok (set-value :b "b"))))
