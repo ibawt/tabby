@@ -32,16 +32,17 @@
 
 (defn- send-pkt
   [client pkt]
-  (d/loop [c client]
+  (d/loop [c client, times 0]
     (d/let-flow [c c]
-       (if-not (connected? c)
-         (d/recur (connect-to-leader c))
-         (do
-           (s/put! (:socket c) pkt)
-           (d/let-flow [msg (s/take! (:socket c) ::none)]
-                       (if-not (= :redirect (:type msg))
-                         [c (:body msg)]
-                         (d/recur (set-leader c (:hostname msg) (:port msg))))))))))
+      (cond
+        (> times 10) [c :dead]
+        (not (connected? c)) (d/recur (connect-to-leader c) (inc times))
+        :else (d/let-flow [_ (s/put! (:socket c) pkt)
+                           msg (s/take! (:socket c) ::none)]
+                (if-not (= :redirect (:type msg))
+                  [c (:body msg)]
+                  (d/recur (set-leader c (:hostname msg) (:port msg))
+                           (inc times))))))))
 
 (defprotocol Client
   (close [this])
