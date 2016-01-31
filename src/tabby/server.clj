@@ -97,10 +97,11 @@
 
 (defn update-state [dt state]
   (->
-   (update state :election-timeout - dt)
+   state
    (apply-commit-index)
-   (utils/if-not-leader? f/check-election-timeout)
    (process-rx-packets)
+   (update :election-timeout - dt)
+   (utils/if-not-leader? f/check-election-timeout)
    (utils/if-leader? l/check-backlog dt)
    (utils/if-leader? cs/check-clients)))
 

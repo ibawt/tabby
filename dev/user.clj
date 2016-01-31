@@ -123,11 +123,17 @@
     (kill id)
     id))
 
+(defn while-not-leader []
+  (future (loop [l (find-leader)]
+            (Thread/yield)
+            (if l
+              l
+              (recur (find-leader))))))
+
 (defn testy []
   (reset)
-  (Thread/sleep 200)
+  @(while-not-leader)
   (println "leader: " (first (find-leader)))
   (assert (= :ok (set-value :a "a")))
-  (Thread/sleep 200)
   (kill-random-follower)
   (assert (= :ok (set-value :b "b"))))

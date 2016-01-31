@@ -46,7 +46,7 @@
                                    (assoc :hostname (str i ":" (+ i base-port))))]) servers)))
 
 (defrecord LocalNetworkCluster
-    [servers ^Long time ^Integer base-port ^Integer timeout]
+    [servers time base-port timeout]
   cluster/Cluster
   (init-cluster [this num]
     (-> (merge this (cluster/create base-port num))
@@ -56,11 +56,13 @@
     (start this))
 
   (kill-server [this id]
+    (warn "Killing server: " id)
     (update-in this [:servers id] (fn [x]
                                     (if (instance? clojure.lang.Atom x)
                                       (swap! x net/stop-server)
                                       x))))
   (rez-server [this id]
+    (warn "Rezing server: " id)
     (update-in this [:servers id] (fn [x]
                                     (if (instance? clojure.lang.Atom x)
                                       x

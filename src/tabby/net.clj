@@ -5,6 +5,7 @@
             [gloss.io :as io]
             [taoensso.nippy :as nippy]
             [manifold.deferred :as d]
+            [tabby.leader :as l]
             [manifold.stream :as s]
             [tabby.client-state :as cs]
             [tabby.server :as server]
@@ -52,6 +53,9 @@
   "Connects the peer messages to the :rx-stream"
   [state socket handshake]
   (info (:id @state) " accepting peer connection from: " (:src handshake))
+  (if (= :leader (:type @state))
+    (warn "i'm the leader sending him a pkt toute suite")
+    (swap! state l/broadcast-heartbeat))
   (when-not (get-in @state [:peers (:src handshake) :socket])
     (swap! state assoc-in [:peers (:src handshake) :socket] socket))
   (s/connect socket (:rx-stream @state)
@@ -202,12 +206,13 @@
 (defn start-server
   "Starts the server listening."
   [server port]
+  (swap! server assoc :election-timeout (utils/random-election-timeout))
   (tcp/start-server
    (fn [s info]
      ((connection-handler server) (wrap-duplex-stream protocol s) info))
    {:port port}))
 
-(def ^:private rx-buffer-size 5) ; no data for this random choice
+(def ^:private rx-buffer-size 1) ; no data for this random choice
 
 (defn create-server
   "Creates a network instance of the server."

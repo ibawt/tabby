@@ -11,9 +11,10 @@
 (defn- request-vote [state params]
   (let [r {:term (:current-term state)
            :vote-granted?
-           (and (utils/valid-term? state params)
-                (not (:voted-for state))
-                (log/prev-log-term-equals? state params))}]
+           (and
+            (utils/valid-term? state params)
+            (not (:voted-for state))
+            (log/prev-log-term-equals? state params))}]
     {:response r
      :state (if (:vote-granted? r)
               (assoc state :voted-for (:candidate-id params))
@@ -51,7 +52,9 @@
   "append entries packet"
   [state p]
   ;; (warn "[" (:id state) "] append entries:" p)
-  (let [r (append-entries state (:body p))]
+  (let [r (append-entries (assoc state :election-timeout
+                                 (utils/random-election-timeout))
+                          (:body p))]
     (utils/transmit (:state r) {:dst (:src p) :src (:id state)
                                 :type :append-entries-response
                                 :body (:result r)})))
@@ -67,4 +70,5 @@
       (assoc :election-timeout (utils/random-election-timeout))
       (assoc :leader-id leader-id)
       (assoc :type :follower)
-      (dissoc :voted-for)))
+      ;; (dissoc :voted-for)
+      ))

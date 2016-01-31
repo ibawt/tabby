@@ -45,7 +45,7 @@
 (defn- apply-peer-timeouts [state dt]
   (update state :next-timeout utils/mapf - dt))
 
-(def ^:private peer-next-timeout 75)
+(def ^:private peer-next-timeout 35)
 
 (defn- update-peer-timeout [state peer]
   (assoc-in state [:next-timeout peer] peer-next-timeout))
