@@ -20,7 +20,6 @@
 
 (defn- connect [server timeout]
   (connect-to-peers server)
-  ;; (Thread/sleep 200)
   (swap! server assoc :event-loop
          (net/event-loop server timeout))
   server)

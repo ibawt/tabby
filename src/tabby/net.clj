@@ -18,6 +18,11 @@
    (comp byte-streams/to-byte-buffer nippy/freeze)
    (comp nippy/thaw byte-streams/to-byte-array)))
 
+(defn- stream-open? [x]
+  (and x (not (s/closed? x))))
+
+(def ^:private stream-closed? (complement stream-open?))
+
 (defn- wrap-duplex-stream
   "wrap the stream in the protocol"
   [protocol s]
@@ -53,41 +58,18 @@
   "Connects the peer messages to the :rx-stream"
   [state socket handshake]
   (info (:id @state) " accepting peer connection from: " (:src handshake))
-
-  (s/put! socket :ok)
-  (when-not (get-in @state [:peers (:src handshake) socket])
-    (swap! state assoc-in [:peers (:src handshake) :socket] socket))
-  ;; (swap! state
-  ;;        (fn [state]
-  ;;          (let [old-socket (get-in state [:peers (:src handshake) :socket])]
-  ;;            ;; )
-  ;;            (warn (:id state) " old socket is :" old-socket)
-  ;;            (if (or (nil? old-socket) (s/closed? old-socket))
-  ;;              (do
-  ;;                (warn (:id state) " replacing")
-  ;;                (assoc-in state [:peers (:src handshake) :socket] socket))
-  ;;              (do
-  ;;                state)))
-  ;;          ))
+  (swap! state
+         (fn [state]
+           (if (stream-closed? (get-in state [:peers (:src handshake) :socket]))
+             (assoc-in state [:peers (:src handshake) :socket] socket)
+             state)))
 
   (if (= :leader (:type @state))
     (warn "i'm the leader sending him a pkt toute suite")
     (swap! state l/broadcast-heartbeat))
 
-  (d/loop []
-    (-> (s/take! socket)
-        (d/chain
-         (fn [msg]
-           (warn (:id @state) " rx'd msg: " msg)
-           (when (and msg (not (s/closed? (:rx-stream @state))))
-             (s/put! (:rx-stream @state) msg)
-             (d/recur))))
-        (d/catch (fn [ex]
-                   (warn ex " caught exception")
-                   (s/close! socket)))))
-  ;; (s/connect socket (:rx-stream @state) {:downstream? false
-  ;;                                        :upstream? true})
-  )
+  (s/connect socket (:rx-stream @state) {:downstream? false
+                                         :upstream? true}))
 
 (defn- connect-table-tennis-socket
   ":ping -> :pong"
@@ -109,8 +91,7 @@
     (swap! state update :clients cs/create-client client-index socket)
     (s/connect (s/map #(assoc % :client-id client-index) socket)
                (:rx-stream @state)
-               {:downstream? false
-                :upstream? false})))
+               {:downstream? false})))
 
 (defn- connection-handler
   "Returns a function that will handle the handshake for incoming connections."
@@ -134,15 +115,10 @@
   "deferred connect version, returns just the socket in a defered"
   [state [id peer]]
   (info (:id state) " connecting to peer: " id)
-  (if (:socket peer)
-    (do
-      (warn (:id state) " already connected to " id)
-      [id peer])
+  (if (stream-open? (:socket peer))
+    [id peer]
     (-> (d/let-flow [socket (client (:hostname peer) (:port peer))
-                     _ (s/put! socket {:src (:id state) :type :peering-handshake})
-                     resp (s/take! socket)]
-          (assert (= resp :ok))
-          (warn (:id state) " peer " id " handshake response: " resp)
+                     _ (s/put! socket {:src (:id state) :type :peering-handshake})]
           (s/connect socket (:rx-stream state) {:downstream? false})
           [id (assoc peer :socket socket)])
         (d/catch (fn [ex]
@@ -157,9 +133,6 @@
            (connect-to-peer @state [peer-id (get-in @state [:peers peer-id])])
            (fn [[peer-id peer-value]]
              (swap! state (fn [s]
-                            (if (get-in s [:peers peer-id :socket])
-                              (warn (:id s) ": FUCK socket is already in here somehow: " (get-in s [:peers peer-id :socket])))
-
                             (-> (assoc-in s [:peers peer-id] peer-value)
                                 (dissoc [:peers peer-id :connect-pending]))))))
           (d/catch (fn [ex]
@@ -173,11 +146,7 @@
         socket (get-in state [:peers peer-id :socket])]
     (if (and socket (not (s/closed? socket)))
       (s/put! socket p)
-      (do
-        (when socket
-         ;; (warn (:id state) " failed sending to " (:dst p) " socket is: " socket)
-         )
-        false))))
+      false)))
 
 (defmacro dissoc-in [s ks k]
  `(update-in ~s [~@ks] dissoc ~k))
@@ -203,24 +172,16 @@
             (warn (:id state) ": invalid pkt: " p)
             state)))
 
-
 (defn- transmit
   "sends all the currently queued packets"
   [state]
   (let [pkts (:tx-queue @state)]
     (swap! state assoc :tx-queue '())
-    (loop [pkts pkts]
-      (if (empty? pkts)
-        state
-        (let [sent (send-pkt @state (first pkts))]
-          (warn (:id @state) " sending: " (first pkts))
-          (when (= :leader (:type @state))
-            (warn "leader sending: " sent " data: " (first pkts)))
-          (when-not sent
-            ;; (warn (:id @state) " trying to reconnect to peer: " (:dst (first pkts)))
-             ;(reconnect-to-peer state (:dst (first pkts)))
-            )
-          (recur (rest pkts)))))))
+    (doseq [p pkts]
+      (when-not (send-pkt @state p))
+          ;; (warn (:id @state) " trying to reconnect to peer: " (:dst (first pkts)))
+          ;; (reconnect-to-peer state (:dst (first pkts)))
+          )))
 
 (defn- handle-rx-pkt
   "appends the pkt and runs update"
@@ -237,9 +198,6 @@
   true)
 
 (def ^:private default-timeout 10)
-
-(defmacro stream-open? [x]
-  `(and ~x (not (s/closed? ~x))))
 
 (defn event-loop
   "Runs the event loop for a server instance.  Returns a deferred."
@@ -280,7 +238,7 @@
   (let [s (if (instance? clojure.lang.Atom server)
             server
             (atom server))]
-    (swap! s assoc :rx-stream (s/stream))
+    (swap! s assoc :rx-stream (s/stream (or (:rx-buffer-size @s) rx-buffer-size)))
     (swap! s assoc :server-socket (start-server s port))
     s))
 
@@ -295,11 +253,11 @@
                                  (.close s))
                                nil))
       (update :peers utils/mapf (fn [x]
-                                  (when x
-                                    ;; (warn "peer map is: " x)
-                                    (s/close! (:socket x)))
+                                  (when-let [socket (:socket x)]
+                                    (s/close! socket))
                                   (dissoc x :socket)))
       (update :rx-stream (fn [x]
-                           (s/close! x)
+                           (when x
+                             (s/close! x))
                            nil))))
 

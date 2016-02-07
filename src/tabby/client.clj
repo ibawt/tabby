@@ -16,6 +16,12 @@
   (-> (close-socket this)
       (assoc :leader {:host host :port port})))
 
+(defn- set-next-leader [client]
+  (let [s (:servers client)
+        n (concat (rest s) (list (first s)))]
+    (-> (assoc client :leader (first n))
+        (assoc :servers n))))
+
 (defn- connect-to-leader
   [client]
   (d/catch
@@ -25,7 +31,7 @@
                   (assoc client :socket socket))
       (fn [e]
         (warn e "caught exception in connect")
-        nil)))
+        (set-next-leader client))))
 
 (defn- connected? [{socket :socket}]
   (and socket ((complement s/closed?) socket)))

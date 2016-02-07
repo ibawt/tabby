@@ -73,7 +73,7 @@
     (if (empty? forms)
       [x (persistent! out)]
       (let [form (first forms)
-            [k v] (apply (first form) x (rest form))]
+            [k v] @(apply (first form) x (rest form))]
         (recur k (rest forms) (conj! out v))))))
 
 (defmacro thr

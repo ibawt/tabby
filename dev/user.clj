@@ -131,7 +131,6 @@
               (recur (find-leader))))))
 
 (defn testy []
-  (reset)
   @(while-not-leader)
   (println "leader: " (first (find-leader)))
   (assert (= :ok (set-value :a "a")))

@@ -7,6 +7,7 @@
   (+ (rand-int 15) 15))
 
 (defn- make-append-log-pkt [state peer]
+  (assert peer "peer shouldn't be nil")
   (let [prev-index (dec (get (:next-index state) peer))
         prev-term (log/get-log-term state prev-index)]
     ;; (warn "sending to:" peer " log[" p-index "] term = " p-term)
@@ -21,6 +22,7 @@
             :leader-commit (:commit-index state)}}))
 
 (defn- make-heart-beat-pkt [state peer]
+  (assert peer "peer shouldn't be nil")
   (let [p-index (count (:log state))
         p-term (log/get-log-term state p-index)]
     {:dst peer
@@ -101,10 +103,11 @@
    (broadcast-heart-beat)))
 
 (defn become-leader [state]
-  (warn (:id state) " becoming LEADER: term = " (:current-term state))
+  (warn (:id state) " becoming leader: term = " (:current-term state))
   (-> (update state :log conj {:term (:current-term state) :cmd {:op :noop}})
       (merge
           {:type :leader
+           :leader-id (:id state)
            :next-timeout (make-peer-map state (constantly peer-next-timeout))
            :next-index (make-peer-map state  #(inc (count (:log state))))
            :match-index (make-peer-map state (constantly 0))})
