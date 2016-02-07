@@ -24,8 +24,10 @@
             (and (= :candidate (:type state))
                  (= :append-entries (:type params))
                  (<= (:current-term state) (:term body))))
-      (f/become-follower (assoc state :current-term (:term body))
-                         (:leader-id body))
+      (do
+        ;; (warn (:id state) " params = " params)
+        (f/become-follower (assoc state :current-term (:term body))
+                           (or (:leader-id body) (:candidate-id body))))
       (if (:leader-id body)
         (assoc state :leader-id (:leader-id body))
         state))))

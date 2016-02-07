@@ -15,10 +15,12 @@
     (swap! server assoc :peers peers)))
 
 (defn- start-server [server & rest]
-  (net/create-server server (:port server)))
+  (net/create-server server (:port (if (instance? clojure.lang.Atom server)
+                                     @server server))))
 
 (defn- connect [server timeout]
   (connect-to-peers server)
+  ;; (Thread/sleep 200)
   (swap! server assoc :event-loop
          (net/event-loop server timeout))
   server)
@@ -58,15 +60,14 @@
   (kill-server [this id]
     (warn "Killing server: " id)
     (update-in this [:servers id] (fn [x]
-                                    (if (instance? clojure.lang.Atom x)
-                                      (swap! x net/stop-server)
-                                      x))))
+                                    (swap! x net/stop-server)
+                                    x)))
   (rez-server [this id]
     (warn "Rezing server: " id)
     (update-in this [:servers id] (fn [x]
-                                    (if (instance? clojure.lang.Atom x)
-                                      x
-                                      (connect (start-server x) (:timeout this))))))
+                                    (swap! x assoc :trace true)
+                                    (connect (start-server x) (:timeout this))
+                                    x)))
 
   (stop-cluster [this]
     (stop this))

@@ -40,12 +40,12 @@
 (defn- peer-timeout?
   "checks if the peer is ready to send another heartbeat"
   [state peer]
-  (<= (get (:next-timeout state) peer) 0))
+  (<= (or (get (:next-timeout state) peer) 1) 0))
 
 (defn- apply-peer-timeouts [state dt]
   (update state :next-timeout utils/mapf - dt))
 
-(def ^:private peer-next-timeout 35)
+(def ^:private peer-next-timeout 15)
 
 (defn- update-peer-timeout [state peer]
   (assoc-in state [:next-timeout peer] peer-next-timeout))
@@ -101,7 +101,7 @@
    (broadcast-heart-beat)))
 
 (defn become-leader [state]
-  (info (:id state) " becoming leader: term = " (:current-term state))
+  (warn (:id state) " becoming LEADER: term = " (:current-term state))
   (-> (update state :log conj {:term (:current-term state) :cmd {:op :noop}})
       (merge
           {:type :leader
