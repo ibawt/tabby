@@ -77,7 +77,7 @@
 (def ^:private highest-match-index
   "Returns frequencies of all of the match indices and the count,
    sorted descending."
-  (comp first reverse frequencies vals :match-index))
+  (comp first reverse (partial sort-by first) frequencies vals :match-index))
 
 (defn- check-commit-index [state]
   (let [[index c] (highest-match-index state)]

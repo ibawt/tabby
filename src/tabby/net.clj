@@ -64,8 +64,8 @@
              (assoc-in state [:peers (:src handshake) :socket] socket)
              state)))
 
-  (if (= :leader (:type @state))
-    (warn "i'm the leader sending him a pkt toute suite")
+  (when (= :leader (:type @state))
+    ;; (warn "i'm the leader sending him a pkt toute suite")
     (swap! state l/broadcast-heartbeat))
 
   (s/connect socket (:rx-stream @state) {:downstream? false

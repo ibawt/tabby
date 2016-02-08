@@ -59,7 +59,7 @@
       :reset db
       :noop db
       (do
-        (warn "[" (:id state) "]" "invalid operation: " op "index: " index)
+        (warn "[" (:id state) "]" "invalid operation: " op "index: " index " cmd: " (:cmd (get log index)))
         db))))
 
 (defn read-value [state key]
