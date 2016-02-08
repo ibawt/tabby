@@ -42,6 +42,7 @@
                               :target-commit-index (inc (:commit-index state))})
                      (assoc :pending-read {}))]
        (l/write state {:key (:key cas)
+                       :op :set
                        :value (:new cas)})]
       [[client-id (assoc client :pending-read {})]
          (utils/transmit state {:client-dst client-id :uuid (:uuid r)

@@ -85,5 +85,5 @@
                                (client/compare-and-swap :a "c" "a"))]
         (is (= {:value :ok} (first v)))
         (is (= {:value :ok} (second v)))
-        (is (= {:value "b"} (get v 2)))
-        (is (= {:value :invalid-value} (get v 3)))))))
+        (is (= {:value "b"} (nth v 2)))
+        (is (= {:value :invalid-value} (nth v 3)))))))
