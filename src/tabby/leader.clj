@@ -74,10 +74,18 @@
                        (inc next-index)
                        next-index))))))
 
-(def ^:private highest-match-index
+(defn- match-sort
+  "Sorting function for a collection of [index freq] pairs.
+   If the frequencies are equivalent the highest index is taken."
+  [[a-index a-freq] [b-index b-freq]]
+  (if (= a-freq b-freq)
+    (- b-index a-index)
+    (- b-freq a-freq)))
+
+(def highest-match-index
   "Returns frequencies of all of the match indices and the count,
    sorted descending."
-  (comp first reverse (partial sort-by first) frequencies vals :match-index))
+  (comp first (partial sort match-sort) frequencies vals :match-index))
 
 (defn- check-commit-index [state]
   (let [[index c] (highest-match-index state)]
@@ -89,7 +97,6 @@
 (defn- make-peer-map [state f]
   (into {} (for [[p _] (:peers state)]
              [p (f)])))
-
 
 (defn check-and-update-append-entries [state p]
   (check-commit-index (update-match-and-next state p)))
