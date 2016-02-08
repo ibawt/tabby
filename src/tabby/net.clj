@@ -54,7 +54,7 @@
   (d/chain (tcp/client {:host host, :port port})
            #(wrap-duplex-stream protocol %)))
 
-(defn- connect-peer-socket
+(defn- connect-peer-socket!
   "Connects the peer messages to the :rx-stream"
   [state socket handshake]
   (info (:id @state) " accepting peer connection from: " (:src handshake))
@@ -83,7 +83,7 @@
                (s/put! socket :pong))
              (d/recur)))))))
 
-(defn- connect-client-socket
+(defn- connect-client-socket!
   "Dispatches socket messages to the states :rx-stream"
   [state socket handshake]
   (let [client-index (utils/gen-uuid)]
@@ -100,9 +100,9 @@
     (d/let-flow
      [handshake (s/take! s)]
      (-> ((condp = (:type handshake)
-            :peering-handshake connect-peer-socket
+            :peering-handshake connect-peer-socket!
             :table-tennis connect-table-tennis-socket
-            :client-handshake connect-client-socket
+            :client-handshake connect-client-socket!
             (fn [&_]
               (warn "Invalid handshake: " (:type handshake))
               (s/close! s)))
@@ -124,7 +124,7 @@
         (d/catch (fn [ex]
                    (warn (:id state) "caught exception in connecting to: " id))))))
 
-(defn- reconnect-to-peer [state peer-id]
+(defn- reconnect-to-peer! [state peer-id]
   (when-not (get-in @state [:peers peer-id :connect-pending])
     (swap! state assoc-in [:peers peer-id :connect-pending] true)
     (warn (:id @state) " reconnecting to " peer-id)
@@ -138,6 +138,7 @@
           (d/catch (fn [ex]
                      (swap! state update-in [:peers peer-id] dissoc :connect-pending)
                      (warn ex "[" (:id @state) "] caught exception in reconnect-to-peer")))))))
+
 (defn- send-peer-packet
   "sends a packet to the appropriate peer socket, will reconnect"
   [state p]
@@ -172,7 +173,7 @@
             (warn (:id state) ": invalid pkt: " p)
             state)))
 
-(defn- transmit
+(defn- transmit!
   "sends all the currently queued packets"
   [state]
   (let [pkts (:tx-queue @state)]
@@ -180,10 +181,10 @@
     (doseq [p pkts]
       (when-not (send-pkt @state p))
           ;; (warn (:id @state) " trying to reconnect to peer: " (:dst (first pkts)))
-          ;; (reconnect-to-peer state (:dst (first pkts)))
+      ;;(reconnect-to-peer state (:dst (first pkts)))
           )))
 
-(defn- handle-rx-pkt
+(defn- handle-rx-pkt!
   "appends the pkt and runs update"
   [state dt pkt]
   (swap! state
@@ -191,7 +192,7 @@
            (server/update-state dt (update s :rx-queue conj pkt))))
   true)
 
-(defn- handle-timeout
+(defn- handle-timeout!
   "timeout of dt seconds, just run the update"
   [state dt]
   (swap! state (fn [s] (server/update-state dt s)))
@@ -204,7 +205,7 @@
   [state timeout]
   (d/loop [t (current-time)]
     (when-not (empty? (:tx-queue @state))
-      (transmit state))
+      (transmit! state))
 
     (if-not (stream-open? (:rx-stream @state))
       (warn (:id @state) " has a closed stream we should be exiting")
@@ -213,8 +214,8 @@
                    (fn [msg]
                      (when (condp = msg
                              ::none false
-                             ::timeout (handle-timeout state (delta-t t))
-                             (handle-rx-pkt state (delta-t t) msg))
+                             ::timeout (handle-timeout! state (delta-t t))
+                             (handle-rx-pkt! state (delta-t t) msg))
                        (d/recur (current-time)))))
           (d/catch (fn [ex]
                      (warn ex (:id @state) ": caught exception in event loop")
