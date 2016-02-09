@@ -150,6 +150,7 @@
              (#(kill-server % (s-at 0)))
              (step 75)
              (step-times 5 10)
+             (step-times 5 10)
              (until-empty)
              (step 75)
              (until-empty)
@@ -157,6 +158,7 @@
              (step-times 5 10)
              (until-empty)
              (step 75)
+             (step-times 5 10)
              (until-empty)
              (step 75))]
       (is (= #{:leader :follower} (server-types s))))))
