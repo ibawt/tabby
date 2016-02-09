@@ -132,30 +132,33 @@
       (is (= 2 (get-in s [:servers (s-at 0) :current-term]))))))
 
 (defn testy []
-  (->> (test-cluster 3)
-       (until-empty)
+  (->> (create-and-elect)
        (write {:a "a"})
-       (until-empty)
-       (step 10)
        (until-empty)))
 
 (defn server-types
   "returns a set of the server types"
   [s]
-  ;; (transduce (comp (map (comp :type second)) (filter #(not= (s-at 0) (first %))))
-  ;;            conj #{} (:servers s))
   (into #{} (map (comp :type second) (filter #(not= (s-at 0) (first %)) (:servers s)))))
 
 (deftest leadership-change
   (testing "a new leader should be chosen"
-    (let [s (->
+    ;; FIXME: we should rebind the random-election-timeout
+    ;; to make this not so hand-wavy
+    (let [s (->>
              (testy)
-             (kill-server (s-at 0))
-             (#(step 175 %))
+             (#(kill-server % (s-at 0)))
+             (step 75)
+             (step-times 5 10)
              (until-empty)
-             (#(step 75 %))
+             (step 75)
              (until-empty)
-             (#(step 75 %)))]
+             (step 75)
+             (step-times 5 10)
+             (until-empty)
+             (step 75)
+             (until-empty)
+             (step 75))]
       (is (= #{:leader :follower} (server-types s))))))
 
 (deftest test-log-catch-up
@@ -167,8 +170,8 @@
                  (until-empty)
                  (step 75)
                  (until-empty))]
-      (is (= '(1 0 1) (map count (fields-by-id s :log))))
-      (is (= '(1 0 1) (fields-by-id s :commit-index)))
+      (is (= '(3 2 3) (map count (fields-by-id s :log))))
+      (is (= '(3 0 3) (fields-by-id s :commit-index)))
       (is (= '({:a "a"} {} {:a "a"}) (fields-by-id s :db)))
 
       (let [s1 (->> s
@@ -177,8 +180,8 @@
                     (until-empty)
                     (step 80)
                     (until-empty))]
-        (is (= '(1 1 1) (fields-by-id s1 :last-applied)))
-        (is (= '(1 1 1) (fields-by-id s1 :commit-index)))
+        (is (= '(3 3 3) (fields-by-id s1 :last-applied))) ;; TODO: revisit this assertion
+        (is (= '(3 3 3) (fields-by-id s1 :commit-index)))
         (is (= '({:a "a"} {:a "a"} {:a "a"}) (fields-by-id s1 :db)))))))
 
 (deftest test-bigger-cluster
@@ -219,8 +222,8 @@
                  (until-empty)
                  (step 10)
                  (until-empty))]
-      (is (= '(1 0 0 0 1) (map count (fields-by-id s :log))))
-      (is (= '(0 0 0 0 0) (fields-by-id s :last-applied)))
+      (is (= '(3 2 2 2 3) (map count (fields-by-id s :log))))
+      (is (= '(2 0 0 0 2) (fields-by-id s :last-applied)))
       (is (= '({} {} {} {} {}) (fields-by-id s :db))))))
 
 (deftest test-write-no-response
@@ -234,5 +237,5 @@
                  (until-empty)
                  (step 75)
                  (until-empty))]
-      (is (= '(1 0 1) (map count (fields-by-id s :log))))
+      (is (= '(3 2 3) (map count (fields-by-id s :log))))
       (is (= '({:a "a"} {} {:a "a"}) (fields-by-id s :db))))))

@@ -66,9 +66,8 @@
   (-> state
       (cs/close-clients)
       (dissoc :next-timeout)
+      (dissoc :voted-for)
       (dissoc :match-index)
       (assoc :election-timeout (utils/random-election-timeout))
       (assoc :leader-id leader-id)
-      (assoc :type :follower)
-      ;; (dissoc :voted-for)
-      ))
+      (assoc :type :follower)))
