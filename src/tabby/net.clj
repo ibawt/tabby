@@ -5,6 +5,7 @@
             [gloss.io :as io]
             [taoensso.nippy :as nippy]
             [manifold.deferred :as d]
+            [tabby.leader :as l]
             [manifold.stream :as s]
             [tabby.client-state :as cs]
             [tabby.server :as server]
@@ -16,6 +17,11 @@
    (gloss/finite-block :uint16)
    (comp byte-streams/to-byte-buffer nippy/freeze)
    (comp nippy/thaw byte-streams/to-byte-array)))
+
+(defn- stream-open? [x]
+  (and x (not (s/closed? x))))
+
+(def ^:private stream-closed? (complement stream-open?))
 
 (defn- wrap-duplex-stream
   "wrap the stream in the protocol"
@@ -48,14 +54,22 @@
   (d/chain (tcp/client {:host host, :port port})
            #(wrap-duplex-stream protocol %)))
 
-(defn- connect-peer-socket
+(defn- connect-peer-socket!
   "Connects the peer messages to the :rx-stream"
   [state socket handshake]
   (info (:id @state) " accepting peer connection from: " (:src handshake))
-  (when-not (get-in @state [:peers (:src handshake) :socket])
-    (swap! state assoc-in [:peers (:src handshake) :socket] socket))
-  (s/connect socket (:rx-stream @state)
-             {:downstream? false}))
+  (swap! state
+         (fn [state]
+           (if (stream-closed? (get-in state [:peers (:src handshake) :socket]))
+             (assoc-in state [:peers (:src handshake) :socket] socket)
+             state)))
+
+  ;; (when (= :leader (:type @state))
+  ;;   ;; (warn "i'm the leader sending him a pkt toute suite")
+  ;;   (swap! state l/broadcast-heartbeat))
+
+  (s/connect socket (:rx-stream @state) {:downstream? false
+                                         :upstream? true}))
 
 (defn- connect-table-tennis-socket
   ":ping -> :pong"
@@ -69,7 +83,7 @@
                (s/put! socket :pong))
              (d/recur)))))))
 
-(defn- connect-client-socket
+(defn- connect-client-socket!
   "Dispatches socket messages to the states :rx-stream"
   [state socket handshake]
   (let [client-index (utils/gen-uuid)]
@@ -86,9 +100,9 @@
     (d/let-flow
      [handshake (s/take! s)]
      (-> ((condp = (:type handshake)
-            :peering-handshake connect-peer-socket 
+            :peering-handshake connect-peer-socket!
             :table-tennis connect-table-tennis-socket
-            :client-handshake connect-client-socket
+            :client-handshake connect-client-socket!
             (fn [&_]
               (warn "Invalid handshake: " (:type handshake))
               (s/close! s)))
@@ -100,25 +114,40 @@
 (defn connect-to-peer
   "deferred connect version, returns just the socket in a defered"
   [state [id peer]]
-  (-> (d/let-flow [socket (client (:hostname peer) (:port peer))
-                   _ (s/put! socket {:src (:id state) :type :peering-handshake})]
-                  [id (assoc peer :socket socket)])
-      (d/catch (fn [ex]
-                 (warn ex "caught exception in connect")))))
+  (info (:id state) " connecting to peer: " id)
+  (if (stream-open? (:socket peer))
+    [id peer]
+    (-> (d/let-flow [socket (client (:hostname peer) (:port peer))
+                     _ (s/put! socket {:src (:id state) :type :peering-handshake})]
+          (s/connect socket (:rx-stream state) {:downstream? false})
+          [id (assoc peer :socket socket)])
+        (d/catch (fn [ex]
+                   (warn (:id state) "caught exception in connecting to: " id))))))
+
+(defn- reconnect-to-peer! [state peer-id]
+  (when-not (get-in @state [:peers peer-id :connect-pending])
+    (swap! state assoc-in [:peers peer-id :connect-pending] true)
+    (warn (:id @state) " reconnecting to " peer-id)
+    (d/future
+      (-> (d/chain
+           (connect-to-peer @state [peer-id (get-in @state [:peers peer-id])])
+           (fn [[peer-id peer-value]]
+             (swap! state (fn [s]
+                            (-> (assoc-in s [:peers peer-id] peer-value)
+                                (dissoc [:peers peer-id :connect-pending]))))))
+          (d/catch (fn [ex]
+                     (swap! state update-in [:peers peer-id] dissoc :connect-pending)
+                     (warn ex "[" (:id @state) "] caught exception in reconnect-to-peer")))))))
 
 (defn- send-peer-packet
   "sends a packet to the appropriate peer socket, will reconnect"
   [state p]
   ;;; TODO: refactor
-  (let [peer-id (:dst p)]
-   (loop [s state times 0]
-     (let [socket (get-in s [:peers peer-id :socket])]
-       (if (and socket (not (s/closed? socket)))
-         (do
-           (s/put! socket p) s)
-         (recur (assoc-in @(connect-to-peer s [peer-id
-                                              (get-in s [:peers peer-id])]))
-                (inc times)))))))
+  (let [peer-id (:dst p)
+        socket (get-in state [:peers peer-id :socket])]
+    (if (and socket (not (s/closed? socket)))
+      (s/put! socket p)
+      false)))
 
 (defmacro dissoc-in [s ks k]
  `(update-in ~s [~@ks] dissoc ~k))
@@ -140,18 +169,22 @@
   (cond
     (:dst p) (send-peer-packet state p)
     (:client-dst p) (send-client-packet state p)
-    :else (assert false "invalid packet")))
+    :else (do
+            (warn (:id state) ": invalid pkt: " p)
+            state)))
 
-(defn- transmit
+(defn- transmit!
   "sends all the currently queued packets"
   [state]
-  (loop [pkts (:tx-queue state)
-         s state]
-    (if (empty? pkts)
-      (assoc s :tx-queue '())
-      (recur (rest pkts) (send-pkt s (first pkts))))))
+  (let [pkts (:tx-queue @state)]
+    (swap! state assoc :tx-queue '())
+    (doseq [p pkts]
+      (when-not (send-pkt @state p))
+          ;; (warn (:id @state) " trying to reconnect to peer: " (:dst (first pkts)))
+      ;;(reconnect-to-peer state (:dst (first pkts)))
+          )))
 
-(defn- handle-rx-pkt
+(defn- handle-rx-pkt!
   "appends the pkt and runs update"
   [state dt pkt]
   (swap! state
@@ -159,7 +192,7 @@
            (server/update-state dt (update s :rx-queue conj pkt))))
   true)
 
-(defn- handle-timeout
+(defn- handle-timeout!
   "timeout of dt seconds, just run the update"
   [state dt]
   (swap! state (fn [s] (server/update-state dt s)))
@@ -172,25 +205,27 @@
   [state timeout]
   (d/loop [t (current-time)]
     (when-not (empty? (:tx-queue @state))
-      (transmit @state)
-      (swap! state assoc :tx-queue '()))
-    (-> (d/chain (s/try-take! (:rx-stream @state) ::none
-                              (or timeout default-timeout) ::timeout)
-                 (fn [msg]
-                   (when (condp = msg
+      (transmit! state))
+
+    (if-not (stream-open? (:rx-stream @state))
+      (warn (:id @state) " has a closed stream we should be exiting")
+      (-> (d/chain (s/try-take! (:rx-stream @state) ::none
+                                (or timeout default-timeout) ::timeout)
+                   (fn [msg]
+                     (when (condp = msg
                              ::none false
-                             ::timeout (handle-timeout state (delta-t t))
-                             (handle-rx-pkt state (delta-t t) msg))
-                     (d/recur (current-time)))))
-        (d/catch (fn [ex]
-                   (warn ex "caught exception in event loop")
-                   (s/close! (:rx-stream @state)))))))
+                             ::timeout (handle-timeout! state (delta-t t))
+                             (handle-rx-pkt! state (delta-t t) msg))
+                       (d/recur (current-time)))))
+          (d/catch (fn [ex]
+                     (warn ex (:id @state) ": caught exception in event loop")
+                     (s/close! (:rx-stream @state))))))))
 
 
 (defn start-server
   "Starts the server listening."
   [server port]
-  (info "starting server on port: " port)
+  (swap! server assoc :election-timeout (utils/random-election-timeout))
   (tcp/start-server
    (fn [s info]
      ((connection-handler server) (wrap-duplex-stream protocol s) info))
@@ -201,21 +236,29 @@
 (defn create-server
   "Creates a network instance of the server."
   [server port]
-  (info "creating server: " (:id server) " on port: " port)
-  (let [s (atom server)
-        socket (start-server s port)]
-    (swap! s merge {:server-socket socket
-                    :rx-stream (s/stream rx-buffer-size)})
+  (let [s (if (instance? clojure.lang.Atom server)
+            server
+            (atom server))]
+    (swap! s assoc :rx-stream (s/stream (or (:rx-buffer-size @s) rx-buffer-size)))
+    (swap! s assoc :server-socket (start-server s port))
     s))
 
-(defn stop-server [server]
-  (doall
-   (utils/mapf (:peer-sockets server) s/close!))
-  (when-let [^java.io.Closeable s (:server-socket server)]
-    (info "stopping server socket: " (:id server))
-    (.close s))
+(defn stop-server
+  "Stops the server listening socket and rx stream"
+  [server]
+  (assert (not (instance? clojure.lang.Atom server)))
 
-  (when-let [queue (:rx-stream server)]
-    (info "closing rx queue")
-    (s/close! queue))
-  (dissoc server :rx-stream :server-socket))
+  (-> server
+      (update :server-socket (fn [^java.io.Closeable s]
+                               (when s
+                                 (.close s))
+                               nil))
+      (update :peers utils/mapf (fn [x]
+                                  (when-let [socket (:socket x)]
+                                    (s/close! socket))
+                                  (dissoc x :socket)))
+      (update :rx-stream (fn [x]
+                           (when x
+                             (s/close! x))
+                           nil))))
+

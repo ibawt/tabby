@@ -1,0 +1,18 @@
+#+STARTUP: overview
+* Todos
+** DONE redo client to return only deferreds
+CLOSED: [2015-11-19 Thu 23:06]
+- Note taken on [2015-11-19 Thu 23:06] \\
+  still needs a refactor to remove the really nested code
+** TODO cluster needs add-packet-loss fixed/tested
+** TODO leadership change needs to be fixed/tested
+** TODO tests are flaky 
+** TODO finish main to allow for standalone running
+** TODO write jepsen adapter
+** TODO run jepsen tests
+** TODO benchmark/profile
+** TODO write a component adapter
+** TODO make sure every function has a docstring
+** TODO clean up all the TODO:'s in the code base
+* Checklist
+

@@ -48,4 +48,4 @@
          (net/start-server (:port options))
          (server/set-peers (:peers options))))
     (catch Exception e
-      (warn e "man caught exception exiting..."))))
+      (warn e "main caught exception exiting..."))))

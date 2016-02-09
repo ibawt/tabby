@@ -1,29 +1,22 @@
 (ns tabby.cluster
   (:require [tabby.server :as server]
-            [clojure.tools.logging :refer :all]
-            [tabby.utils :refer :all]))
+            [clojure.tools.logging :refer [warn info]]
+            [tabby.utils :as utils]))
 
 ;;; Testing and Development things for cluster testing
 (defn foreach-server
   ([state f]
-   (update state :servers mapf f))
+   (update state :servers utils/mapf f))
   ([state f & args]
-   (apply update state :servers mapf f args)))
+   (apply update state :servers utils/mapf f args)))
 
 (defn- find-peers [id servers]
   (into {} (map (fn [[k v]]
                   [k (select-keys v [:hostname :port])]) (filterv (fn [[k v]] (not= k id)) servers))))
 
 (defn- set-peers [servers]
-  (mapf servers (fn [v]
+  (utils/mapf servers (fn [v]
                   (server/set-peers v (find-peers (:id v) servers)))))
-
-(defn create [baseport num]
-  (let [servers (reduce #(merge %1 {(str %2 ".localnet:" %2)
-                                    (merge (server/create-server (str %2 ".localnet:" %2))
-                                           {:hostname "localhost" :port (+ baseport %2)})}) {} (range num))]
-    {:time 0
-     :servers (set-peers servers)}))
 
 (defn write [k cluster]
   (let [[id leader] (first (filter (fn [[k v]] (= :leader (:type v))) (:servers cluster)))]
@@ -44,12 +37,12 @@
                   (filter (partial valid-packet-for cluster id) (:tx-queue s))) (:servers cluster))))
 
 (defn collect-rx-packets [system]
-  (update-in system [:servers] mapf
+  (update-in system [:servers] utils/mapf
              (fn [v]
                (update-in v [:rx-queue] concat (collect-packets system (:id v))))))
 
 (defn clear-tx-packets [system]
-  (update-in system [:servers] mapf assoc :tx-queue '()))
+  (update-in system [:servers] utils/mapf assoc :tx-queue '()))
 
 (defn pump-transmit-queues [system]
   (-> system
@@ -59,8 +52,8 @@
 (defn step [dt system]
   (-> system
       (pump-transmit-queues)
-      (update-in [:servers] mapf (partial server/update-state dt))
-      (update-in [:time] + dt)))
+      (update :servers utils/mapf (partial server/update-state dt))
+      (update :time + dt)))
 
 (defn step-times [dt times system]
   (loop [s system
@@ -83,7 +76,7 @@
   (select-keys (get (:servers cluster) id) [:tx-queue :rx-queue]))
 
 (defn print-fields [cluster & rest]
-  (mapf (:servers cluster) #(select-keys % (reverse rest))))
+  (utils/mapf (:servers cluster) #(select-keys % (reverse rest))))
 
 (defn ps [cluster]
   (print-fields cluster :id :type :election-timeout :current-term :commit-index))
@@ -103,18 +96,35 @@
   (stop-cluster [this])
   (step-cluster [this dt]))
 
+(declare create)
+
 (defrecord NoNetworkCluster [servers time]
   Cluster
   (init-cluster [this num]
     (assoc this (create num)))
   (start-cluster [this]
     this)
-  (kill-server [this id])
+  (kill-server
+   [this id]
+   (loop [others (filter #(not= id %) (keys (:servers this)))
+          this this]
+     (if (empty? others)
+       this
+       (recur (rest others)
+              (add-packet-loss id (first others) this)))))
+
   (rez-server [this id])
   (stop-cluster [this]
     this)
   (step-cluster [this dt]
     (step dt this)))
 
+(defn create [baseport num]
+  (let [servers (reduce #(merge %1 {(str %2 ".localnet:" %2)
+                                    (merge (server/create-server (str %2 ".localnet:" %2))
+                                           {:hostname "localhost" :port (+ baseport %2)})}) {} (range num))]
+    (->NoNetworkCluster (set-peers servers) 0)))
+
 (defn create-no-network-cluster [num]
   (map->NoNetworkCluster (create num)))
+

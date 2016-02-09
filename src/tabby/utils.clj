@@ -1,8 +1,9 @@
-(ns tabby.utils)
+(ns tabby.utils
+  (:require [clojure.tools.logging :refer [warn info]]))
 
 (defmacro dbg [& body]
   `(let [x# ~body]
-     (println (quote ~body) "=" x#) x#))
+     (warn (quote ~body) "=" x#) x#))
 
 (defn mapf
   "apply f to each value of m and return the updated m"
@@ -72,7 +73,7 @@
     (if (empty? forms)
       [x (persistent! out)]
       (let [form (first forms)
-            [k v] (apply (first form) x (rest form))]
+            [k v] @(apply (first form) x (rest form))]
         (recur k (rest forms) (conj! out v))))))
 
 (defmacro thr

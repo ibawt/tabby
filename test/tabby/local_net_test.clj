@@ -3,14 +3,14 @@
             [tabby.client :as client]
             [tabby.cluster :as cluster]
             [tabby.local-net :refer :all]
-            [tabby.utils :as utils]))
+            [tabby.utils :as utils]
+            [manifold.deferred :as d]))
 
 
 ;;; TODO: remove the sleep with a poller + timeout
 
 (defn test-cluster []
   (cluster/init-cluster (create-network-cluster 10 9090) 3))
-
 
 (defmacro with-cluster [bindings & body]
   `(let [~@bindings]
@@ -64,11 +64,17 @@
   (testing "start and write a value and get it back"
     (with-cluster [c (cluster/start-cluster (test-cluster))]
       (wait-for-a-leader c)
-      (with-client [[k v] (utils/thr (create-client)
-                               (client/set-or-create :a "a")
-                               (client/get-value :a))]
-        (is (= {:value :ok} (first v)))
-        (is (= {:value "a"} (second v))))))
+      (let [resp @(d/chain
+                    (create-client)
+                    (fn [klient]
+                      (client/set-or-create klient :a "a"))
+                    (fn [[klient resp]]
+                      (is (= :ok (:value resp)))
+                      (client/get-value klient :a))
+                    (fn [[klient resp]]
+                      resp))]
+        (is (= {:value "a"} resp)))))
+
   (testing "compare and swap"
     (with-cluster [c (cluster/start-cluster (test-cluster))]
       (wait-for-a-leader c)
@@ -79,5 +85,5 @@
                                (client/compare-and-swap :a "c" "a"))]
         (is (= {:value :ok} (first v)))
         (is (= {:value :ok} (second v)))
-        (is (= {:value "b"} (get v 2)))
-        (is (= {:value :invalid-value} (get v 3)))))))
+        (is (= {:value "b"} (nth v 2)))
+        (is (= {:value :invalid-value} (nth v 3)))))))

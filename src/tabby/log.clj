@@ -1,5 +1,6 @@
 (ns tabby.log
-  (:require [tabby.utils :refer :all]))
+  (:require [clojure.tools.logging :refer [warn info]]
+            [tabby.utils :as utils]))
 
 ;;; Log functions
 (defn last-log-index
@@ -10,6 +11,7 @@
 (defn get-log-at
   "gets the log entry at the index specified (1 based)"
   [state idx]
+  ;; (warn (:id state) " log = " (:log state))
   (if (or (neg? idx) (> idx (last-log-index state)))
     (throw (IndexOutOfBoundsException.
             (format "Invalid index: %d, last-log-index: %d"
@@ -23,13 +25,15 @@
 
 (defn- apply-log [state entries]
   (if (seq entries)
-    (update state :log (fn [log]
-                         (into [] (concat log entries))))
+    (do
+      (warn (:id state) " applying entries: " entries)
+      (update state :log (fn [log]
+                           (into [] (concat log entries)))))
     state))
 
 (defn append-log [state params]
   (let [s (-> state
-              (assoc :election-timeout (random-election-timeout))
+              (assoc :election-timeout (utils/random-election-timeout))
               (apply-log (:entries params)))]
     (if (> (:leader-commit params) (:commit-index state))
       (assoc s :commit-index
@@ -38,12 +42,25 @@
 
 (defn prev-log-term-equals?
   [state {p-index :prev-log-index p-term :prev-log-term}]
-  (or (= 0 p-index (last-log-index state))
-      (= (get-log-term state p-index) p-term)))
+  (try
+    (or (= 0 p-index (last-log-index state))
+        (= (get-log-term state p-index) p-term))
+    (catch Exception ex
+      ;; FIXME: shitty
+      (warn ex "caught exception in prev-log-term-equals?")
+        false)))
 
-(defn apply-entry [{log :log index :last-applied} db]
-  (let [{key :key value :value} (:cmd (get log index))]
-    (merge db {key value})))
+(defn apply-entry [state db]
+  (let [log (:log state)
+        index (:last-applied state)
+        {key :key value :value op :op} (:cmd (get log index))]
+    (condp = op
+      :set (merge db {key value})
+      :reset db
+      :noop db
+      (do
+        (warn "[" (:id state) "]" "invalid operation: " op "index: " index " cmd: " (:cmd (get log index)))
+        db))))
 
 (defn read-value [state key]
   (get (:db state) key))

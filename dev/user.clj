@@ -7,10 +7,13 @@
             [tabby.local-net :as local-net]
             [clojure.tools.namespace.repl :refer [refresh]]))
 
-(def cluster-maker
-  (partial local-net/create-network-cluster 10 8090))
+(defn cluster-maker
+  "Makes a cluster"
+  []
+  (local-net/create-network-cluster 10 8090))
 
-(defonce cluster (cluster-maker))
+(def cluster
+  (cluster-maker))
 
 (defn- local-client []
   (client/make-local-client [{:host "127.0.0.1" :port 8090}
@@ -50,15 +53,20 @@
   (start)
   :ready)
 
+(defn to-name [x]
+  (if (instance? String x)
+    x
+    (str x ".localnet:" x)))
+
 (defn kill
   "not done yet"
   [n]
-  (alter-var-root #'cluster cluster/kill-server (str n ".localnet:" n)))
+  (alter-var-root #'cluster cluster/kill-server (to-name n)))
 
 (defn rez
   "not done yet"
   [n]
-  (alter-var-root #'cluster cluster/rez-server n))
+  (alter-var-root #'cluster cluster/rez-server (to-name n)))
 
 (defn reset []
   (try
@@ -70,18 +78,18 @@
       (warn e "caught exception in reset!!!"))))
 
 (defn set-value [key value]
-  (let [[kk {code :value}] (client/set-or-create klient key value)]
+  (let [[kk {code :value}] @(client/set-or-create klient key value)]
     (when kk
       (alter-var-root #'klient (constantly kk)))
     code))
 
 (defn get-value [key]
-  (let [[kk {value :value}] (client/get-value klient key)]
+  (let [[kk {value :value}] @(client/get-value klient key)]
     (alter-var-root #'klient (constantly kk))
     value))
 
 (defn compare-and-swap [key new old]
-  (let [[kk {value :value}] (client/compare-and-swap klient key new old)]
+  (let [[kk {value :value}] @(client/compare-and-swap klient key new old)]
     (alter-var-root #'klient (constantly kk))
     value))
 
@@ -100,12 +108,31 @@
 
 (defn find-leader []
   (reduce-kv (fn [_ k v]
-               (if (= :leader (:type (if (instance? clojure.lang.Atom v) @v v)))
+               (if (= :leader (:type (unatom v)))
                  (reduced [k v]) _)) nil (:servers cluster)))
 
 (defn leader-clients []
   (:clients (unatom (second (find-leader)))))
 
+(defn followers []
+  (map first (filter (fn [[k v]]
+                       (not= :leader (:type (unatom v)))) (:servers cluster))))
+
+(defn kill-random-follower []
+  (let [id (first (shuffle (followers)))]
+    (kill id)
+    id))
+
+(defn while-not-leader []
+  (future (loop [l (find-leader)]
+            (Thread/yield)
+            (if l
+              l
+              (recur (find-leader))))))
+
 (defn testy []
-  (reset)
-  (set-value :a "a"))
+  @(while-not-leader)
+  (println "leader: " (first (find-leader)))
+  (assert (= :ok (set-value :a "a")))
+  (kill-random-follower)
+  (assert (= :ok (set-value :b "b"))))

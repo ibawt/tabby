@@ -1,7 +1,8 @@
 (ns tabby.cluster-test
   (:require [clojure.test :refer :all]
             [clojure.tools.logging :refer :all]
-            [tabby.cluster :refer :all]))
+            [tabby.cluster :refer :all]
+            [tabby.utils :as utils]))
 
 (defn fields-by-id [cluster field]
   (map field (vals (sort (:servers cluster)))))
@@ -11,10 +12,10 @@
 
 (defn test-cluster [n]
   (let [c (create 8090 n)]
-    (update-in c [:servers "0.localnet:0" :election-timeout] (constantly 0))))
+    (assoc-in c [:servers "0.localnet:0" :election-timeout] 0)))
 
 (defn create-and-elect []
-  (until-empty (test-cluster 3)))
+  (until-empty (step 50 (until-empty (test-cluster 3)))))
 
 (deftest simple-things
   (testing "everyone's type"
@@ -29,9 +30,10 @@
 
   (testing "1 - 2 vote"
     (let [s (create-and-elect)]
+      (println s)
       (is (= '(:leader :follower :follower) (fields-by-id s :type)))
 
-      (is (= '(0 0 0) (fields-by-id s :commit-index))))))
+      (is (= '(2 2 2) (fields-by-id s :commit-index))))))
 
 (defn sort-queue [q]
   (sort-by :dst q))
@@ -48,10 +50,10 @@
       (is (= '(:candidate :follower :follower) (fields-by-id s1 :type)))
       (is (= '(1 0 0) (fields-by-id s1 :current-term)))
       (is (= '({:dst "1.localnet:1" :src "0.localnet:0" :type :request-vote
-                :body {:term 1 :candidate-id "0.localnet:0", :prev-log-index 0
+                :body {:term 1 :candidate-id "0.localnet:0", :prev-log-index 1
                        :prev-log-term 0}}
                {:dst "2.localnet:2" :src "0.localnet:0" :type :request-vote
-                :body {:term 1 :candidate-id "0.localnet:0", :prev-log-index 0
+                :body {:term 1 :candidate-id "0.localnet:0", :prev-log-index 1
                        :prev-log-term 0}}) (sort-queue (:tx-queue (get (:servers s1) (s-at 0))))))))
   (testing "step 2 - peers respond to request vote"
     (let [s2 (->> (test-cluster 3)
@@ -73,27 +75,27 @@
       (is (= '(:leader :follower :follower) (fields-by-id s :type)))
       (is (= (list {:dst (s-at 1) :type :append-entries :src (s-at 0)
                     :body {:term 1 :leader-id (s-at 0)
-                           :prev-log-index 0 :prev-log-term 0
-                           :entries [] :leader-commit 0}}
+                           :prev-log-index 1 :prev-log-term 0
+                           :entries [{:term 1, :cmd {:op :noop}}] :leader-commit 0}}
                    {:dst (s-at 2) :type :append-entries :src (s-at 0)
                     :body {:term 1 :leader-id (s-at 0)
-                           :prev-log-index 0 :prev-log-term 0
-                           :entries [] :leader-commit 0}})
+                           :prev-log-index 1 :prev-log-term 0
+                           :entries [{:term 1, :cmd {:op :noop}}] :leader-commit 0}})
              (sort-by :dst (:tx-queue (srv s (s-at 0))))))
       (is (= {(s-at 2) 0 (s-at 1) 0} (:match-index (srv s (s-at 0)))))
-      (is (= {(s-at 2) 1 (s-at 1) 1} (:next-index (srv s (s-at 0)))))))
+      (is (= {(s-at 2) 2 (s-at 1) 2} (:next-index (srv s (s-at 0)))))))
 
   (testing "step 4 - process heart beat responses"
     (let [s (->> (test-cluster 3)
                  (step-times 0 4))]
       (is (= (list {:dst (s-at 0) :src (s-at 1) :type :append-entries-response
-                :body {:term 1 :success true :count 0}}) (:tx-queue (srv s (s-at 1)))))
+                :body {:term 1 :success true :count 1}}) (:tx-queue (srv s (s-at 1)))))
       (is (= (list {:dst (s-at 0) :src (s-at 2) :type :append-entries-response
-                :body {:term 1 :success true :count 0}}) (:tx-queue (srv s (s-at 2)))))))
+                :body {:term 1 :success true :count 1}}) (:tx-queue (srv s (s-at 2)))))))
   (testing "step 5 - heart beat response"
     (let [s (->> (test-cluster 3)
                  (step-times 0 5))]
-      (is (= {(s-at 2) 0 (s-at 1) 0} (:match-index (srv s (s-at 0)))))))
+      (is (= {(s-at 2) 2 (s-at 1) 2} (:match-index (srv s (s-at 0)))))))
 
 
   (testing "step 7 wait for commit index"
@@ -103,7 +105,7 @@
                  (until-empty)
                  (step 150)
                  (until-empty))]
-      (is (= '(1 1 1) (fields-by-id s :commit-index))))))
+      (is (= '(3 3 3) (fields-by-id s :commit-index))))))
 
 (deftest test-election-responses
   (testing "election with one server not responding"
@@ -130,12 +132,36 @@
       (is (= 2 (get-in s [:servers (s-at 0) :current-term]))))))
 
 (defn testy []
-  (->> (test-cluster 5)
-       (until-empty)
+  (->> (create-and-elect)
        (write {:a "a"})
-       (until-empty)
-       (step 10)
        (until-empty)))
+
+(defn server-types
+  "returns a set of the server types"
+  [s]
+  (into #{} (map (comp :type second) (filter #(not= (s-at 0) (first %)) (:servers s)))))
+
+(deftest leadership-change
+  (testing "a new leader should be chosen"
+    ;; FIXME: we should rebind the random-election-timeout
+    ;; to make this not so hand-wavy
+    (let [s (->>
+             (testy)
+             (#(kill-server % (s-at 0)))
+             (step 75)
+             (step-times 5 10)
+             (step-times 5 10)
+             (until-empty)
+             (step 75)
+             (until-empty)
+             (step 75)
+             (step-times 5 10)
+             (until-empty)
+             (step 75)
+             (step-times 5 10)
+             (until-empty)
+             (step 75))]
+      (is (= #{:leader :follower} (server-types s))))))
 
 (deftest test-log-catch-up
   (testing "log is missing 1"
@@ -146,8 +172,8 @@
                  (until-empty)
                  (step 75)
                  (until-empty))]
-      (is (= '(1 0 1) (map count (fields-by-id s :log))))
-      (is (= '(1 0 1) (fields-by-id s :commit-index)))
+      (is (= '(3 2 3) (map count (fields-by-id s :log))))
+      (is (= '(3 0 3) (fields-by-id s :commit-index)))
       (is (= '({:a "a"} {} {:a "a"}) (fields-by-id s :db)))
 
       (let [s1 (->> s
@@ -156,8 +182,8 @@
                     (until-empty)
                     (step 80)
                     (until-empty))]
-        (is (= '(1 1 1) (fields-by-id s1 :last-applied)))
-        (is (= '(1 1 1) (fields-by-id s1 :commit-index)))
+        (is (= '(3 3 3) (fields-by-id s1 :last-applied))) ;; TODO: revisit this assertion
+        (is (= '(3 3 3) (fields-by-id s1 :commit-index)))
         (is (= '({:a "a"} {:a "a"} {:a "a"}) (fields-by-id s1 :db)))))))
 
 (deftest test-bigger-cluster
@@ -198,8 +224,8 @@
                  (until-empty)
                  (step 10)
                  (until-empty))]
-      (is (= '(1 0 0 0 1) (map count (fields-by-id s :log))))
-      (is (= '(0 0 0 0 0) (fields-by-id s :last-applied)))
+      (is (= '(3 2 2 2 3) (map count (fields-by-id s :log))))
+      (is (= '(2 0 0 0 2) (fields-by-id s :last-applied)))
       (is (= '({} {} {} {} {}) (fields-by-id s :db))))))
 
 (deftest test-write-no-response
@@ -213,5 +239,5 @@
                  (until-empty)
                  (step 75)
                  (until-empty))]
-      (is (= '(1 0 1) (map count (fields-by-id s :log))))
+      (is (= '(3 2 3) (map count (fields-by-id s :log))))
       (is (= '({:a "a"} {} {:a "a"}) (fields-by-id s :db))))))

@@ -16,30 +16,39 @@
   (-> (close-socket this)
       (assoc :leader {:host host :port port})))
 
+(defn- set-next-leader [client]
+  (let [s (:servers client)
+        n (concat (rest s) (list (first s)))]
+    (-> (assoc client :leader (first n))
+        (assoc :servers n))))
+
 (defn- connect-to-leader
-  "blocks"
   [client]
-  (try
-    (let [socket @(net/client (get-in client [:leader :host])
-                              (get-in client [:leader :port]))]
-      (s/put! socket {:type :client-handshake})
-      (assoc client :socket socket))
-    (catch Exception e
-      (warn e "caught exception in connect")
-      nil)))
+  (d/catch
+      (d/let-flow [socket (net/client (get-in client [:leader :host])
+                                      (get-in client [:leader :port]))]
+                  (s/put! socket {:type :client-handshake})
+                  (assoc client :socket socket))
+      (fn [e]
+        (warn e "caught exception in connect")
+        (set-next-leader client))))
+
+(defn- connected? [{socket :socket}]
+  (and socket ((complement s/closed?) socket)))
 
 (defn- send-pkt
-  "this will block"
   [client pkt]
-  (loop [c client]
-    (if-not (:socket c)
-      (recur (connect-to-leader c))
-      (do
-        @(s/put! (:socket c) pkt)
-        (let [msg @(s/take! (:socket c) ::none)]
-          (if-not (= :redirect (:type msg))
-            [c (:body msg)]
-            (recur (set-leader c (:hostname msg) (:port msg)))))))))
+  (d/loop [c client, times 0]
+    (d/let-flow [c c]
+      (cond
+        (> times 10) [c :dead]
+        (not (connected? c)) (d/recur (connect-to-leader c) (inc times))
+        :else (d/let-flow [_ (s/put! (:socket c) pkt)
+                           msg (s/take! (:socket c) ::none)]
+                (if-not (= :redirect (:type msg))
+                  [c (:body msg)]
+                  (d/recur (set-leader c (:hostname msg) (:port msg))
+                           (inc times))))))))
 
 (defprotocol Client
   (close [this])
