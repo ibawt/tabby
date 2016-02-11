@@ -10,7 +10,6 @@
   (assert peer "peer shouldn't be nil")
   (let [prev-index (dec (get (:next-index state) peer))
         prev-term (log/get-log-term state prev-index)]
-    ;; (warn "sending to:" peer " log[" p-index "] term = " p-term)
     {:dst peer
      :type :append-entries
      :src (:id state)
@@ -42,37 +41,42 @@
 (defn- peer-timeout?
   "checks if the peer is ready to send another heartbeat"
   [state peer]
-  (<= (or (get (:next-timeout state) peer) 1) 0))
+  (<= (get-in state [:next-timeout peer]) 0))
 
 (defn- apply-peer-timeouts [state dt]
   (update state :next-timeout utils/mapf - dt))
 
-(def ^:private peer-next-timeout 15)
+(def ^:private default-peer-next-timeout 30)
+
+(defn- peer-next-timeout [state]
+  (or (:peer-next-timeout state) default-peer-next-timeout))
 
 (defn- update-peer-timeout [state peer]
-  (assoc-in state [:next-timeout peer] peer-next-timeout))
+  (assoc-in state [:next-timeout peer] (peer-next-timeout state)))
 
 (defn- send-peer-update [state [peer value]]
-  (utils/transmit state
-            (if (> (log/last-log-index state) (get (:match-index state) peer))
-              (make-append-log-pkt state peer)
-              (make-heart-beat-pkt state peer))))
+  (let [match-index (get-in state [:match-index peer])
+        last-log-index (log/last-log-index state)]
+    (utils/transmit state (if (> last-log-index match-index)
+                            (make-append-log-pkt state peer)
+                            (make-heart-beat-pkt state peer)))))
 
 (defn- broadcast-heart-beat [state]
   (->
    (utils/foreach-peer state send-peer-update)
-   (update :next-timeout utils/mapf (constantly peer-next-timeout))))
+   (update :next-timeout utils/mapf (fn [_]
+                                      (peer-next-timeout state)))))
 
 (defn- update-match-and-next [state p]
   (let [s (if-not (:success (:body p))
             (update-in state [:next-index (:src p)] dec)
-            state)]
-    (-> (assoc-in s [:match-index (:src p)] (get (:next-index state) (:src p)))
-        (update-in [:next-index (:src p)]
-                   (fn [next-index]
-                     (if (< next-index (inc (count (:log s))))
-                       (inc next-index)
-                       next-index))))))
+            (assoc-in state [:match-index (:src p)]
+                      (get-in state [:next-index (:src p)])))]
+    (update-in s [:next-index (:src p)]
+               (fn [next-index]
+                 (if (< next-index (inc (count (:log s))))
+                   (inc next-index)
+                   next-index)))))
 
 (defn- match-sort
   "Sorting function for a collection of [index freq] pairs.

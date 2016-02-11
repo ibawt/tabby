@@ -3,6 +3,7 @@
             [tabby.utils :as utils]))
 
 ;;; Log functions
+;;; TODO: this should be + 1
 (defn last-log-index
   "return the index of the last log entry (1 based)"
   [state]
@@ -26,7 +27,6 @@
 (defn- apply-log [state entries]
   (if (seq entries)
     (do
-      (warn (:id state) " applying entries: " entries)
       (update state :log (fn [log]
                            (into [] (concat log entries)))))
     state))
@@ -37,7 +37,7 @@
               (apply-log (:entries params)))]
     (if (> (:leader-commit params) (:commit-index state))
       (assoc s :commit-index
-             (min (:leader-commit params) (count (:log state))))
+             (min (:leader-commit params) (inc (count (:log state)))))
       s)))
 
 (defn prev-log-term-equals?
