@@ -110,8 +110,13 @@
 (defn set-peers [state peers]
   (assoc state :peers peers))
 
-(defn handle-write [state kv]
-  (handle-set state {:key (first (keys kv)) :value (first (vals kv))}))
+(defn handle-write
+  "skips the client state part of the state machine"
+  [state kv]
+  (assert (= :leader (:type state)))
+  (l/write state {:key (first (keys kv))
+                  :value (first (vals kv))
+                  :op :set}))
 
 (defn create-server [id]
   {:current-term 0

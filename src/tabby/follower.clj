@@ -20,15 +20,20 @@
               (assoc state :voted-for (:candidate-id params))
               state)}))
 
+(defn- same-entry? [state pkt]
+  (= (:prev-log-index pkt) (count (:log state))))
+
 ;;; TODO: refactor this shit show
 (defn- append-entries [state params]
-  (if (> 0 (count (:entries params)))
-      (warn (:id state) " append-entries: " params))
   (let [r {:term (:current-term state)
            :count (count (:entries params))
-           :success (and (utils/valid-term? state params)
-                         (log/prev-log-term-equals? state params))}]
-    {:state (if (:success r) (log/append-log state params) state)
+           :success (and
+                     (= (:prev-log-index params) (count (:log state)))
+                     (utils/valid-term? state params)
+                     (log/prev-log-term-equals? state params))}]
+    {:state (if (:success r)
+              (log/append-log state params)
+              state)
      :result r}))
 
 (defn handle-request-vote

@@ -36,6 +36,9 @@
   (flatten (map (fn [[k s]]
                   (filter (partial valid-packet-for cluster id) (:tx-queue s))) (:servers cluster))))
 
+(defn setting [cluster k v]
+  (update cluster :servers utils/mapf assoc k v))
+
 (defn collect-rx-packets [system]
   (update-in system [:servers] utils/mapf
              (fn [v]
@@ -50,10 +53,16 @@
       (clear-tx-packets)))
 
 (defn step [dt system]
-  (-> system
-      (pump-transmit-queues)
-      (update :servers utils/mapf (partial server/update-state dt))
+  (-> (pump-transmit-queues system)
+      (update :servers utils/mapf #(server/update-state dt %))
       (update :time + dt)))
+
+(declare until-empty)
+
+(defn step-until-empty [system dt]
+  (-> dt
+      (step system)
+      (until-empty)))
 
 (defn step-times [dt times system]
   (loop [s system
@@ -75,11 +84,11 @@
 (defn queue-for [cluster id]
   (select-keys (get (:servers cluster) id) [:tx-queue :rx-queue]))
 
-(defn print-fields [cluster & rest]
+(defn server-fields [cluster & rest]
   (utils/mapf (:servers cluster) #(select-keys % (reverse rest))))
 
 (defn ps [cluster]
-  (print-fields cluster :id :type :election-timeout :current-term :commit-index))
+  (server-fields cluster :log :match-index :next-index :type :election-timeout :current-term :commit-index))
 
 (defn until-empty [cluster]
   (loop [c (step 0 cluster)]
@@ -111,7 +120,8 @@
      (if (empty? others)
        this
        (recur (rest others)
-              (add-packet-loss id (first others) this)))))
+              (add-packet-loss (first others) id
+               (add-packet-loss id (first others) this))))))
 
   (rez-server [this id])
   (stop-cluster [this]

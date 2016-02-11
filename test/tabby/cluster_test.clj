@@ -1,13 +1,23 @@
 (ns tabby.cluster-test
   (:require [clojure.test :refer :all]
             [clojure.tools.logging :refer :all]
+            [clojure.pprint :refer [pprint]]
             [tabby.cluster :refer :all]
-            [tabby.utils :as utils]))
+            [tabby.utils :as utils]
+            [tabby.server :as server]))
 
-(defn fields-by-id [cluster field]
+(defn- fields-by-id [cluster field]
   (map field (vals (sort (:servers cluster)))))
 
-(defn s-at [i]
+(defn- print-fields [c & fields]
+  (pprint (ps c))
+  c)
+
+(defn- c-trace [msg c]
+  (println msg)
+  c)
+
+(defn- s-at [i]
   (str i ".localnet:" i))
 
 (defn test-cluster [n]
@@ -15,7 +25,7 @@
     (assoc-in c [:servers "0.localnet:0" :election-timeout] 0)))
 
 (defn create-and-elect []
-  (until-empty (step 50 (until-empty (test-cluster 3)))))
+  (until-empty (step 20 (until-empty (test-cluster 3)))))
 
 (deftest simple-things
   (testing "everyone's type"
@@ -29,8 +39,7 @@
       (is (> (:election-timeout (get-in s [:servers (s-at 0)])) 0))))
 
   (testing "1 - 2 vote"
-    (let [s (create-and-elect)]
-      (println s)
+    (let [s (until-empty (step 50 (create-and-elect)))]
       (is (= '(:leader :follower :follower) (fields-by-id s :type)))
 
       (is (= '(2 2 2) (fields-by-id s :commit-index))))))
@@ -131,10 +140,33 @@
       (is (= '(:follower :follower :follower) (fields-by-id s :type)))
       (is (= 2 (get-in s [:servers (s-at 0) :current-term]))))))
 
+(defn- packets-from [server from-id]
+  (filter (fn [p]
+            (= (:src p) from-id)) (:rx-queue server)))
+
+(deftest packet-filtering-test
+  (testing "packet filtering"
+    (let [s (-> (create 8090 3)
+                (assoc-in [:servers (s-at 0) :tx-queue]
+                        `({:dst ~(s-at 1) :src ~(s-at 0)}
+                          {:dst ~(s-at 2) :src ~(s-at 0)}))
+                (assoc-in [:servers (s-at 1) :tx-queue]
+                          `({:dst ~(s-at 0) :src ~(s-at 1) :foo :bar}))
+                (kill-server (s-at 0))
+                (pump-transmit-queues))]
+      (is (= 0 (count (get-in s [:servers (s-at 0) :rx-queue]))))
+      (is (= 0 (count (packets-from (get-in s [:servers (s-at 1)]) (s-at 0)))))
+      (is (= 0 (count (packets-from (get-in s [:servers (s-at 2)]) (s-at 0))))))))
+
+
 (defn testy []
   (->> (create-and-elect)
        (write {:a "a"})
-       (until-empty)))
+       (step 50)
+       (until-empty)
+       (step 50)
+       (until-empty)
+       ))
 
 (defn server-types
   "returns a set of the server types"
@@ -145,23 +177,12 @@
   (testing "a new leader should be chosen"
     ;; FIXME: we should rebind the random-election-timeout
     ;; to make this not so hand-wavy
-    (let [s (->>
-             (testy)
-             (#(kill-server % (s-at 0)))
-             (step 75)
-             (step-times 5 10)
-             (step-times 5 10)
-             (until-empty)
-             (step 75)
-             (until-empty)
-             (step 75)
-             (step-times 5 10)
-             (until-empty)
-             (step 75)
-             (step-times 5 10)
-             (until-empty)
-             (step 75))]
-      (is (= #{:leader :follower} (server-types s))))))
+    ;; (pprint (ps (testy)))
+        (let [s (-> (testy)
+                (kill-server (s-at 0))
+                (assoc-in [:servers (s-at 1) :election-timeout] 0)
+                (step-until-empty 0))]
+         (is (= #{:leader :follower} (server-types s))))))
 
 (deftest test-log-catch-up
   (testing "log is missing 1"
