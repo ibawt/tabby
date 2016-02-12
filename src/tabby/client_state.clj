@@ -32,10 +32,11 @@
    for each pending read.  This establishes
    the quorum count for each read."
   [clients src]
-  (utils/mapf clients (fn [client]
-                        (if (has-reads? client)
-                          (update-in client [:pending-read :hb-count] conj src)
-                          client))))
+  (utils/mapf clients
+              (fn [client]
+                (if (has-reads? client)
+                  (update-in client [:pending-read :hb-count] conj src)
+                  client))))
 
 (defn- handle-read-cas
   "handles compare-and-swap operations,
