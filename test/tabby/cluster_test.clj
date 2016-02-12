@@ -165,8 +165,7 @@
        (step 50)
        (until-empty)
        (step 50)
-       (until-empty)
-       ))
+       (until-empty)))
 
 (defn server-types
   "returns a set of the server types"
@@ -186,23 +185,19 @@
 
 (deftest test-log-catch-up
   (testing "log is missing 1"
-    (let [s (->> (test-cluster 3)
-                 (until-empty)
-                 (add-packet-loss (s-at 0) (s-at 1))
-                 (write {:a "a"})
-                 (until-empty)
-                 (step 75)
-                 (until-empty))]
+    (let [s (-> (create-and-elect)
+                (kill-server (s-at 1))
+                (#(write {:a "a"} %))
+                (until-empty)
+                (step-until-empty 50))]
+      (print-fields s)
       (is (= '(3 2 3) (map count (fields-by-id s :log))))
       (is (= '(3 0 3) (fields-by-id s :commit-index)))
       (is (= '({:a "a"} {} {:a "a"}) (fields-by-id s :db)))
 
-      (let [s1 (->> s
-                    (clear-packet-loss)
-                    (step 80)
-                    (until-empty)
-                    (step 80)
-                    (until-empty))]
+      (let [s1 (-> (clear-packet-loss s)
+                    (step-until-empty 80)
+                    (step-until-empty 80))]
         (is (= '(3 3 3) (fields-by-id s1 :last-applied))) ;; TODO: revisit this assertion
         (is (= '(3 3 3) (fields-by-id s1 :commit-index)))
         (is (= '({:a "a"} {:a "a"} {:a "a"}) (fields-by-id s1 :db)))))))

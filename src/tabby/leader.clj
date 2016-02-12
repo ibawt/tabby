@@ -93,8 +93,9 @@
 
 (defn- check-commit-index [state]
   (let [[index c] (highest-match-index state)]
-    (if (and (utils/quorum? (count (:peers state)) (inc c))
-             (> index (:commit-index state)))
+    (if (and index c
+         (utils/quorum? (count (:peers state)) (inc c))
+         (> index (:commit-index state)))
       (assoc state :commit-index index)
       state)))
 
