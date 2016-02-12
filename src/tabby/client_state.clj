@@ -112,10 +112,10 @@
   [state pkt]
   (if-let [old-response (get-in (:clients state)
                                 [(:client-id pkt) :history (:uuid pkt)])]
-    [(utils/transmit state old-response)]
-    [(assoc-in state [:clients (:client-id pkt) :pending-read]
-               {:uuid (:uuid pkt) :key (:key pkt) :hb-count #{}})
-     :broadcast-heart-beat]))
+    (utils/transmit state old-response)
+    (-> (assoc-in state [:clients (:client-id pkt) :pending-read]
+                  {:uuid (:uuid pkt) :key (:key pkt) :hb-count #{}})
+        (l/broadcast-heartbeat))))
 
 (defn add-cas
   "adds a compare and swap operation to client state table."

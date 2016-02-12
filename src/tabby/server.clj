@@ -70,10 +70,7 @@
 
 (defn client-read
   [state pkt]
-  (let [[s response] (cs/add-read state pkt)]
-    (if (= :broadcast-heart-beat response)
-      (l/broadcast-heartbeat s)
-      (utils/transmit s response))))
+  (cs/add-read state pkt))
 
 (defn- handle-get [state p]
   (client-read state p))
