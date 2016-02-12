@@ -23,15 +23,23 @@
                  false))
              false clients))
 
-(def has-reads? (comp not empty? :pending-read))
+(def has-reads?
+  "does this client have any pending reads?"
+  (comp not empty? :pending-read))
 
-(defn inc-heartbeats [clients src]
+(defn inc-heartbeats
+  "adds the src to the set of heartbeats
+   for each pending read.  This establishes
+   the quorum count for each read."
+  [clients src]
   (utils/mapf clients (fn [client]
                         (if (has-reads? client)
                           (update-in client [:pending-read :hb-count] conj src)
                           client))))
 
 (defn- handle-read-cas
+  "handles compare-and-swap operations,
+   read to comparison to write"
   [state client-id]
   (let [client (get-in state [:clients client-id])
         r (:pending-read client)
@@ -49,7 +57,10 @@
                            :type :cas-reply
                            :body {:value :invalid-value}})))))
 
-(defn- check-writes [state client-id]
+(defn- check-writes
+  "check if the required commit-index is set and
+   transmits client packets"
+  [state client-id]
   (let [client (get-in state [:clients client-id])]
     (if (and (not (empty? (:pending-write client)))
              (>= (:commit-index state)
@@ -62,8 +73,8 @@
       state)))
 
 (defn- check-reads
-     "takes a client-id client map pair and a state and returns the same
-   but updated."
+  "checks if a pending read is ready and
+   transmits client packets."
   [state client-id]
   (let [client (get-in state [:clients client-id])]
     (if (and (has-reads? client)
@@ -77,7 +88,9 @@
              :body {:value (log/read-value state (:key (:pending-read client)))}})))
      state)))
 
-(defn check-clients [state]
+(defn check-clients
+  "check current clients for read/write/cas operations"
+  [state]
   (reduce (fn [state client-id]
             (-> (check-reads state client-id)
                 (check-writes client-id)))
@@ -104,6 +117,7 @@
      :broadcast-heart-beat]))
 
 (defn add-cas
+  "adds a compare and swap operation to client state table."
   [state pkt]
   (assoc-in state [:clients (:client-id pkt) :pending-read]
              {:key (:key (:body pkt)) :hb-count #{} :cas (:body pkt)
@@ -113,6 +127,6 @@
   (update state :clients
           (fn [clients]
             (doseq [[k v] clients]
-              (when (:socket v)
-                (s/close! (:socket v))))
+              (when-let [socket (:socket v)]
+                (s/close! socket)))
             nil)))

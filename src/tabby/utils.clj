@@ -27,17 +27,11 @@
 (defn foreach-peer
   "calls f with current state, the peer and etc."
   ([state f]
-   (loop [s state
-          p (seq (:peers state))]
-     (if (empty? p) s
-         (recur (f s (first p))
-                (rest p)))))
+   (reduce f state (:peers state)))
   ([state f & args]
-   (loop [s state
-          p (seq (:peers state))]
-     (if (empty? p) s
-         (recur (apply f s (first p) args)
-                (rest p))))))
+   (reduce (fn [state peer]
+             (apply f state peer args))
+           state (:peers state))))
 
 (defn transmit [state request]
   (update state :tx-queue conj request))
