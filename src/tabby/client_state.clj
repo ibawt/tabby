@@ -61,6 +61,22 @@
                         :body {:value :ok}}))
       state)))
 
+(defn- check-reads
+     "takes a client-id client map pair and a state and returns the same
+   but updated."
+  [state client-id]
+  (let [client (get-in state [:clients client-id])]
+    (if (and (has-reads? client)
+             (utils/quorum? (count (:peers state))
+                            (inc (count (:hb-count (:pending-read client)))))) ; count yourself
+     (if (get-in client [:pending-read :cas])
+       (handle-read-cas state client-id)
+       (-> (assoc-in state  [:clients client-id :pending-read] {})
+           (utils/transmit
+            {:client-dst client-id :uuid (:uuid (:pending-read client))
+             :body {:value (log/read-value state (:key (:pending-read client)))}})))
+     state)))
+
 (defn check-clients [state]
   (reduce (fn [state client-id]
             (-> (check-reads state client-id)
