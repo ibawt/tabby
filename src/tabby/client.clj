@@ -40,15 +40,18 @@
   [client pkt]
   (d/loop [c client, times 0]
     (d/let-flow [c c]
-      (cond
-        (> times 10) [c :dead]
-        (not (connected? c)) (d/recur (connect-to-leader c) (inc times))
-        :else (d/let-flow [_ (s/put! (:socket c) pkt)
-                           msg (s/take! (:socket c) ::none)]
-                (if-not (= :redirect (:type msg))
-                  [c (:body msg)]
-                  (d/recur (set-leader c (:hostname msg) (:port msg))
-                           (inc times))))))))
+      (manifold.time/in
+       (* 100 times)
+       (fn []
+         (cond
+           (> times 10) [c :dead]
+           (not (connected? c)) (d/recur (connect-to-leader c) (inc times))
+           :else (d/let-flow [_ (s/put! (:socket c) pkt)
+                              msg (s/take! (:socket c) ::none)]
+                   (if-not (= :redirect (:type msg))
+                     [c (:body msg)]
+                     (d/recur (set-leader c (:hostname msg) (:port msg))
+                              (inc times))))))))))
 
 (defprotocol Client
   (close [this])
@@ -60,7 +63,9 @@
     [servers socket leader]
   Client
   (close [this]
-    (s/close! socket))
+    (when (and socket (not (s/closed? socket)))
+      (s/close! socket))
+    (assoc this :socket nil))
 
   (get-value [this key]
     (send-pkt this {:type :get :key key :uuid (utils/gen-uuid)}))

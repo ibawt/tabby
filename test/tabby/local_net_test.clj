@@ -1,9 +1,11 @@
 (ns tabby.local-net-test
   (:require [clojure.test :refer :all]
             [tabby.client :as client]
+            [clojure.tools.logging :refer [warn info]]
             [tabby.cluster :as cluster]
             [tabby.local-net :refer :all]
             [tabby.utils :as utils]
+            [manifold.time :as t]
             [manifold.deferred :as d]))
 
 
@@ -87,3 +89,25 @@
         (is (= {:value :ok} (second v)))
         (is (= {:value "b"} (nth v 2)))
         (is (= {:value :invalid-value} (nth v 3)))))))
+
+(defn- simple-client-request []
+  @(-> (d/chain
+        (create-client)
+        (fn [k]
+          (client/set-or-create k :a "a"))
+        (fn [[k r]]
+          (warn "k: " k)
+          (warn "r: " r)
+          (client/close k)
+          (:value r)))
+       (d/catch (fn [ex]
+                  ex))))
+
+(deftest simple-failures
+  (testing "leaders goes down"
+    (with-cluster [c (cluster/start-cluster (test-cluster))]
+      (wait-for-a-leader c)
+      (let [{leader :id} (find-leader c)]
+        (cluster/kill-server c leader)
+        (is (= :ok (simple-client-request)))
+        (is (find-leader c))))))

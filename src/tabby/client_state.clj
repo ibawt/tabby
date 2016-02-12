@@ -111,7 +111,6 @@
              {:key (:key (:body pkt)) :hb-count #{} :cas (:body pkt)
               :uuid (:uuid pkt)}))
 
-
 (defn close-clients [state]
   (update state :clients
           (fn [clients]
