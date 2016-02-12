@@ -14,15 +14,6 @@
              :history {}
              :socket socket}))
 
-(defn needs-broadcast?
-  "returns true if we are waiting for a broadcast"
-  [clients]
-  (reduce-kv (fn [_ k v]
-               (if-not (empty? (:pending-read v))
-                 (reduced true)
-                 false))
-             false clients))
-
 (def has-reads?
   "does this client have any pending reads?"
   (comp not empty? :pending-read))
@@ -92,10 +83,10 @@
 (defn check-clients
   "check current clients for read/write/cas operations"
   [state]
-  (reduce (fn [state client-id]
+  (reduce (fn [state [client-id _]]
             (-> (check-reads state client-id)
                 (check-writes client-id)))
-          state (keys (:clients state))))
+          state (:clients state)))
 
 (defn add-write
   "adds a client write that is waiting for a response.

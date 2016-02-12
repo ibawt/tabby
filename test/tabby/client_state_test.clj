@@ -15,14 +15,6 @@
                 :history {}
                 :socket :foo}} (create-client {:b :a} :a :foo)))))
 
-(deftest pending-reads-test
-  (testing "returns true when theres something in pending"
-    (is (needs-broadcast? {:a {:pending-read {:foo :bar}}
-                           :b {:pending-read {}}})))
-  (testing "returns false when there is nothing to send"
-    (is (not (needs-broadcast? {:a {:pending-read {}}
-                                :b {:pending-read {}}})))))
-
 (deftest inc-heartbeat-test
   (testing "simple add"
     (is (= {:a {:pending-read {:hb-count #{1}}}}
