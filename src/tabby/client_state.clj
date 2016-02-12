@@ -48,28 +48,28 @@
          (utils/transmit state {:client-dst client-id :uuid (:uuid r)
                                 :type :cas-reply :body {:value :invalid-value}})])))
 
-(defn- check-reads
-  "takes a client-id client map pair and a state and returns the same
-   but updated."
-  [[client-id client] state]
-  (if (and (has-reads? client)
-           (utils/quorum? (count (:peers state))
-                    (inc (count (:hb-count (:pending-read client)))))) ; count yourself
-    (if (get-in client [:pending-read :cas])
-      (handle-read-cas client-id client state)
-      [[client-id (assoc client :pending-read {})]
-       (utils/transmit state {:client-dst client-id :uuid (:uuid (:pending-read client))
-                              :body {:value (log/read-value state (:key (:pending-read client)))}})])
-    [[client-id client] state]))
-
-(defn- check-writes [[client-id client] state]
+(defn- check-writes [[[client-id client] state]]
   (if (and (not (empty? (:pending-write client)))
            (>= (:commit-index state)
                (:target-commit-index (:pending-write client))))
     [[client-id (assoc client :pending-write {})]
      (utils/transmit state {:type :write-reply :client-dst client-id
-                      :uuid (:uuid (:pending-write client))
-                      :body {:value :ok}})]
+                            :uuid (:uuid (:pending-write client))
+                            :body {:value :ok}})]
+    [[client-id client] state]))
+
+(defn- check-reads
+  "takes a client-id client map pair and a state and returns the same
+   but updated."
+  [[[client-id client] state]]
+  (if (and (has-reads? client)
+           (utils/quorum? (count (:peers state))
+                          (inc (count (:hb-count (:pending-read client)))))) ; count yourself
+    (if (get-in client [:pending-read :cas])
+      (handle-read-cas client-id client state)
+      [[client-id (assoc client :pending-read {})]
+       (utils/transmit state {:client-dst client-id :uuid (:uuid (:pending-read client))
+                              :body {:value (log/read-value state (:key (:pending-read client)))}})])
     [[client-id client] state]))
 
 (defn check-clients
@@ -82,11 +82,12 @@
     ;; TODO: this pretty kludgy
     (if (empty? c)
       (assoc s :clients (into {} out))
-      (let [[cc ss] (check-reads (first c) s)
-            [cc2 ss2] (check-writes cc ss)]
+      (let [[updated-client new-state] (->
+                                        (check-reads [(first c) s])
+                                        (check-writes))]
         (recur (rest c)
-               ss2
-               (conj out cc2))))))
+               new-state
+               (conj out updated-client))))))
 
 (defn add-write
   "adds a client write that is waiting for a response.

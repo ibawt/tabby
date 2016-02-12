@@ -20,9 +20,6 @@
               (assoc state :voted-for (:candidate-id params))
               state)}))
 
-(defn- same-entry? [state pkt]
-  (= (:prev-log-index pkt) (count (:log state))))
-
 ;;; TODO: refactor this shit show
 (defn- append-entries [state params]
   (let [r {:term (:current-term state)

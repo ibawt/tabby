@@ -96,8 +96,6 @@
         (fn [k]
           (client/set-or-create k :a "a"))
         (fn [[k r]]
-          (warn "k: " k)
-          (warn "r: " r)
           (client/close k)
           (:value r)))
        (d/catch (fn [ex]
