@@ -38,7 +38,7 @@
   (testing "no-op"
     (let [s {:peers [0 1 2]
              :clients {:a {:pending-write {}
-                           :pending-read {:0 {:hb-count #{}}}
+                           :pending-read {:hb-count #{}}
                            :history {}}}
              :tx-queue '()}]
       (is (= s (check-clients s)))))
