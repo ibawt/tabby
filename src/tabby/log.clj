@@ -27,7 +27,7 @@
 
 (defn append-log [state params]
   (let [s (-> state
-              (assoc :election-timeout (utils/random-election-timeout))
+              (assoc :election-timeout (utils/random-election-timeout state))
               (apply-log (:entries params)))]
     (if (> (:leader-commit params) (:commit-index state))
       (assoc s :commit-index

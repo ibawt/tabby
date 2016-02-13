@@ -224,7 +224,7 @@
 (defn start-server!
   "Starts the server listening."
   [server port]
-  (swap! server assoc :election-timeout (utils/random-election-timeout))
+  (swap! server assoc :election-timeout (utils/random-election-timeout @server))
   (tcp/start-server
    (fn [s info]
      ((connection-handler server) (wrap-duplex-stream protocol s) info))

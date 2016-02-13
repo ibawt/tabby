@@ -112,7 +112,7 @@
    :commit-index 0
    :last-applied 0
    :type :follower
-   :election-timeout (utils/random-election-timeout)
+   :election-timeout (utils/random-election-timeout nil)
    :peers {}
    :clients {}
    :db {}})

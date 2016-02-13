@@ -21,8 +21,10 @@
   (str i ".localnet:" i))
 
 (defn test-cluster [n]
-  (let [c (create 8090 n)]
-    (assoc-in c [:servers "0.localnet:0" :election-timeout] 0)))
+  (-> (create 8090 n)
+      (assoc-in [:servers "0.localnet:0" :election-timeout] 0)
+      (assoc-in [:servers (s-at 1) :election-timeout-fn] (constantly 150))
+      (assoc-in [:servers (s-at 2) :election-timeout-fn] (constantly 300))))
 
 (defn create-and-elect []
   (until-empty (step 20 (until-empty (test-cluster 3)))))

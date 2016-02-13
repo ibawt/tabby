@@ -24,7 +24,7 @@
       (assoc :voted-for (:id state))
       (dissoc :leader-id)
       (update :current-term inc)
-      (assoc :election-timeout (u/random-election-timeout))
+      (assoc :election-timeout (u/random-election-timeout state))
       (assoc :votes {(:id state) true})
       (broadcast-request-vote)))
 

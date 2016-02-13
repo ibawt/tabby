@@ -21,8 +21,9 @@
 
 (defn random-election-timeout
   "returns election-timeout-max + rand(0, election-timeout-max)"
-  []
-  (+ (rand-int election-timeout-max) election-timeout-max))
+  [{f :election-timeout-fn}]
+  (if f (f)
+    (+ (rand-int election-timeout-max) election-timeout-max)))
 
 (defn foreach-peer
   "calls f with current state, the peer and etc."

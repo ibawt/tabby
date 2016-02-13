@@ -54,7 +54,7 @@
   "append entries packet"
   [state p]
   (let [r (append-entries (assoc state :election-timeout
-                                 (utils/random-election-timeout))
+                                 (utils/random-election-timeout state))
                           (:body p))]
     (utils/transmit (:state r) {:dst (:src p) :src (:id state)
                                 :type :append-entries-response
@@ -69,6 +69,6 @@
       (dissoc :next-timeout)
       (dissoc :voted-for)
       (dissoc :match-index)
-      (assoc :election-timeout (utils/random-election-timeout))
+      (assoc :election-timeout (utils/random-election-timeout state))
       (assoc :leader-id leader-id)
       (assoc :type :follower)))
