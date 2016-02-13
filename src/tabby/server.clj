@@ -24,19 +24,16 @@
             (and (= :candidate (:type state))
                  (= :append-entries (:type params))
                  (<= (:current-term state) (:term body))))
-      (do
-        ;; (warn (:id state) " params = " params)
-        (f/become-follower (assoc state :current-term (:term body))
-                           (or (:leader-id body) (:candidate-id body))))
+      (f/become-follower (assoc state :current-term (:term body))
+                         (or (:leader-id body) (:candidate-id body)))
       (if (:leader-id body)
         (assoc state :leader-id (:leader-id body))
         state))))
 
 (defn- apply-commit-index [state]
   (if (> (:commit-index state) (:last-applied state))
-    (do
-     (-> (update state :last-applied inc)
-         (update :db #(log/apply-entry state %))))
+    (-> (update state :last-applied inc)
+        (update :db #(log/apply-entry state %)))
     state))
 
 (defn- redirect-to-leader [state p]
@@ -48,11 +45,6 @@
                          :port (get-in state [:peers (:leader-id state) :port])
                          :leader-id (:leader-id state)}))
 
-(defn- handle [f s p]
-  (if (utils/leader? s)
-    (f s p)
-    (redirect-to-leader s p)))
-
 (defn- handle-set [state p]
   (-> state
       (l/write {:key (:key p)
@@ -60,39 +52,35 @@
                 :op :set})
       (cs/add-write p)))
 
-(defn- handle-cas [state p]
-  (cs/add-cas state p))
-
 (defn handle-append-entries-response [state p]
   (if (pos? (get-in p [:body :count])) ; heart beat response
     (l/check-and-update-append-entries state p)
     (update state :clients cs/inc-heartbeats (:src p))))
 
-(defn client-read
-  [state pkt]
-  (cs/add-read state pkt))
-
-(defn- handle-get [state p]
-  (client-read state p))
-
 (defn- handle-packet
-  [state]
-  (let [p (first (:rx-queue state))
-        s (check-term state p)]
-    (condp = (:type p)
-      :get (handle handle-get s p)
-      :set (handle handle-set s p)
-      :cas (handle handle-cas s p)
-      :request-vote (f/handle-request-vote s p)
-      :request-vote-reply (c/handle-request-vote-response s p)
-      :append-entries (f/handle-append-entries s p)
-      :append-entries-response (handle-append-entries-response s p))))
+  [state p]
+  (if (:client-id p)
+    (if (utils/leader? state)
+      ((condp = (:type p)
+        :get cs/add-read
+        :set handle-set
+        :cas cs/add-cas) state p)
+      (redirect-to-leader state p))
+    (-> (check-term state p)
+        ((condp = (:type p)
+           :request-vote f/handle-request-vote
+           :request-vote-reply c/handle-request-vote-response
+           :append-entries f/handle-append-entries
+           :append-entries-response handle-append-entries-response
+           (fn [s p]
+             (warn (:id state) " invalid packet: " p)
+             s))
+         p))))
 
 (defn- process-rx-packets [state]
-  (if (empty? (:rx-queue state))
-    state
-    (recur (-> (handle-packet state)
-               (update :rx-queue rest)))))
+  (reduce (fn [s p]
+            (-> (handle-packet s p)
+                (update :rx-queue rest))) state (:rx-queue state)))
 
 (defn update-state [dt state]
   (->
