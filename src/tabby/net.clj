@@ -221,7 +221,7 @@
                      (s/close! (:rx-stream @state))))))))
 
 
-(defn start-server
+(defn- start-server!
   "Starts the server listening."
   [server port]
   (swap! server assoc :election-timeout (utils/random-election-timeout))
@@ -239,7 +239,7 @@
             server
             (atom server))]
     (swap! s assoc :rx-stream (s/stream (or (:rx-buffer-size @s) rx-buffer-size)))
-    (swap! s assoc :server-socket (start-server s port))
+    (swap! s assoc :server-socket (start-server! s port))
     s))
 
 (defn stop-server

@@ -21,9 +21,8 @@
 
 (defn- apply-log [state entries]
   (if (seq entries)
-    (do
-      (update state :log (fn [log]
-                           (into [] (concat log entries)))))
+    (update state :log (fn [log]
+                         (into [] (concat log entries))))
     state))
 
 (defn append-log [state params]

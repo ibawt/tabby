@@ -120,7 +120,7 @@
       (merge
           {:type :leader
            :leader-id (:id state)
-           :next-timeout (make-peer-map state (constantly peer-next-timeout))
+           :next-timeout (make-peer-map state (fn [] (peer-next-timeout state)))
            :next-index (make-peer-map state  #(inc (count (:log state))))
            :match-index (make-peer-map state (constantly 0))})
       (broadcast-heart-beat)))
