@@ -101,7 +101,7 @@
 
 (defn- make-peer-map [state f]
   (into {} (for [[p _] (:peers state)]
-             [p (f)])))
+             [p f])))
 
 (defn check-and-update-append-entries [state p]
   (check-commit-index (update-match-and-next state p)))
@@ -120,9 +120,9 @@
       (merge
           {:type :leader
            :leader-id (:id state)
-           :next-timeout (make-peer-map state (fn [] (peer-next-timeout state)))
-           :next-index (make-peer-map state  #(inc (count (:log state))))
-           :match-index (make-peer-map state (constantly 0))})
+           :next-timeout (make-peer-map state (peer-next-timeout state))
+           :next-index (make-peer-map state (inc (count (:log state))))
+           :match-index (make-peer-map state 0)})
       (broadcast-heart-beat)))
 
 (defn check-backlog
