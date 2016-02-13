@@ -12,7 +12,13 @@
 ;;; TODO: remove the sleep with a poller + timeout
 
 (defn test-cluster []
-  (cluster/init-cluster (create-network-cluster 10 9090) 3))
+  (-> (create-network-cluster 10 9090)
+      (cluster/init-cluster 3)
+      (assoc-in [:servers "0.localnet:0" :election-timeout] 0)
+      (assoc-in [:servers "1.localnet:1" :election-timeout-fn]
+                (constantly 150))
+      (assoc-in [:servers "2.localnet:2" :election-timeout-fn]
+                (constantly 300))))
 
 (defmacro with-cluster [bindings & body]
   `(let [~@bindings]
@@ -102,11 +108,11 @@
                   ex))))
 
 ;; fix this when we can make it less janky
-;; (deftest simple-failures
-;;   (testing "leaders goes down"
-;;     (with-cluster [c (cluster/start-cluster (test-cluster))]
-;;       (wait-for-a-leader c)
-;;       (let [{leader :id} (find-leader c)]
-;;         (cluster/kill-server c leader)
-;;         (is (= :ok (simple-client-request)))
-;;         (is (find-leader c))))))
+(deftest simple-failures
+  (testing "leaders goes down"
+    (with-cluster [c (cluster/start-cluster (test-cluster))]
+      (wait-for-a-leader c)
+      (let [{leader :id} (find-leader c)]
+        (cluster/kill-server c leader)
+        (is (= :ok (simple-client-request)))
+        (is (find-leader c))))))

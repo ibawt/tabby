@@ -110,11 +110,10 @@
 
 
   (testing "step 7 wait for commit index"
-    (let [s (->> (test-cluster 3)
-                 (until-empty)
+    (let [s (->> (create-and-elect)
                  (write {:a "a"})
                  (until-empty)
-                 (step 150)
+                 (step 75)
                  (until-empty))]
       (is (= '(3 3 3) (fields-by-id s :commit-index))))))
 
@@ -197,8 +196,8 @@
       (is (= '({:a "a"} {} {:a "a"}) (fields-by-id s :db)))
 
       (let [s1 (-> (clear-packet-loss s)
-                    (step-until-empty 80)
-                    (step-until-empty 80))]
+                   (step-until-empty 50) ;; under election timeout
+                   (step-until-empty 50))]
         (is (= '(3 3 3) (fields-by-id s1 :last-applied))) ;; TODO: revisit this assertion
         (is (= '(3 3 3) (fields-by-id s1 :commit-index)))
         (is (= '({:a "a"} {:a "a"} {:a "a"}) (fields-by-id s1 :db)))))))
@@ -252,9 +251,9 @@
                  (add-packet-loss (s-at 0) (s-at 1))
                  (write {:a "a"})
                  (until-empty)
-                 (step 75)
+                 (step 50)
                  (until-empty)
-                 (step 75)
+                 (step 50)
                  (until-empty))]
       (is (= '(3 2 3) (map count (fields-by-id s :log))))
       (is (= '({:a "a"} {} {:a "a"}) (fields-by-id s :db))))))
