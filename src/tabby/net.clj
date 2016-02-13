@@ -207,7 +207,7 @@
       (transmit! state))
 
     (if-not (stream-open? (:rx-stream @state))
-      (warn (:id @state) " has a closed stream we should be exiting")
+      :exit
       (-> (d/chain (s/try-take! (:rx-stream @state) ::none
                                 (or timeout default-timeout) ::timeout)
                    (fn [msg]
@@ -221,7 +221,7 @@
                      (s/close! (:rx-stream @state))))))))
 
 
-(defn- start-server!
+(defn start-server!
   "Starts the server listening."
   [server port]
   (swap! server assoc :election-timeout (utils/random-election-timeout))
@@ -260,4 +260,3 @@
                            (when x
                              (s/close! x))
                            nil))))
-

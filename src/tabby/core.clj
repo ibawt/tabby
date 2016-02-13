@@ -45,7 +45,7 @@
   (try
     (let [options (parse-args args)]
      (-> (server/create-server (str (:hostname options) ":" (:port options)))
-         (net/start-server (:port options))
+         (net/start-server! (:port options))
          (server/set-peers (:peers options))))
     (catch Exception e
       (warn e "main caught exception exiting..."))))

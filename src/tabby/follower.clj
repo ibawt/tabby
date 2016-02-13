@@ -53,7 +53,6 @@
 (defn handle-append-entries
   "append entries packet"
   [state p]
-  ;; (warn "[" (:id state) "] append entries:" p)
   (let [r (append-entries (assoc state :election-timeout
                                  (utils/random-election-timeout))
                           (:body p))]

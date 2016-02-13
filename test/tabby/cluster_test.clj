@@ -190,7 +190,6 @@
                 (#(write {:a "a"} %))
                 (until-empty)
                 (step-until-empty 50))]
-      (print-fields s)
       (is (= '(3 2 3) (map count (fields-by-id s :log))))
       (is (= '(3 0 3) (fields-by-id s :commit-index)))
       (is (= '({:a "a"} {} {:a "a"}) (fields-by-id s :db)))
