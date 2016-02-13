@@ -9,8 +9,6 @@
             [manifold.deferred :as d]))
 
 
-;;; TODO: remove the sleep with a poller + timeout
-
 (defn test-cluster []
   (-> (create-network-cluster 10 9090)
       (cluster/init-cluster 3)

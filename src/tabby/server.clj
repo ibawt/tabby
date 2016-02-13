@@ -82,15 +82,13 @@
             (-> (handle-packet s p)
                 (update :rx-queue rest))) state (:rx-queue state)))
 
-(defn update-state [dt state]
-  (->
-   state
-   (apply-commit-index)
-   (process-rx-packets)
-   (update :election-timeout - dt)
-   (utils/if-not-leader? f/check-election-timeout)
-   (utils/if-leader? l/check-backlog dt)
-   (utils/if-leader? cs/check-clients)))
+(defn update-state [state dt]
+  (-> (apply-commit-index state)
+      (process-rx-packets)
+      (update :election-timeout - dt)
+      (utils/if-not-leader? f/check-election-timeout)
+      (utils/if-leader? l/check-backlog dt)
+      (utils/if-leader? cs/check-clients)))
 
 (defn set-peers [state peers]
   (assoc state :peers peers))

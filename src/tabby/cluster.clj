@@ -54,7 +54,7 @@
 
 (defn step [dt system]
   (-> (pump-transmit-queues system)
-      (update :servers utils/mapf #(server/update-state dt %))
+      (update :servers utils/mapf server/update-state dt)
       (update :time + dt)))
 
 (declare until-empty)

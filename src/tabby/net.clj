@@ -188,13 +188,14 @@
   [state dt pkt]
   (swap! state
          (fn [s]
-           (server/update-state dt (update s :rx-queue conj pkt))))
+           (-> (update s :rx-queue conj pkt)
+               (server/update-state dt))))
   true)
 
 (defn- handle-timeout!
   "timeout of dt seconds, just run the update"
   [state dt]
-  (swap! state (fn [s] (server/update-state dt s)))
+  (swap! state server/update-state dt)
   true)
 
 (def ^:private default-timeout 10)

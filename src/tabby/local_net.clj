@@ -38,7 +38,7 @@
                                     server))))
 
 (defn- step [state dt]
-  (cluster/foreach-server state swap! (partial server/update-state dt)))
+  (cluster/foreach-server state swap! server/update-state dt))
 
 (defn- assign-ports [servers base-port]
   (into {} (map-indexed (fn [i [key server]]
