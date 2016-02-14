@@ -123,17 +123,24 @@
         (d/catch (fn [ex]
                    (warn (:id state) "caught exception in connecting to: " id))))))
 
-(defn- reconnect-to-peer! [state peer-id]
+(defmacro dissoc-in [s ks k]
+  `(update-in ~s [~@ks] dissoc ~k))
+
+(defn- reconnect-to-peer! [state peer-id p]
   (when-not (get-in @state [:peers peer-id :connect-pending])
     (swap! state assoc-in [:peers peer-id :connect-pending] true)
-    (warn (:id @state) " reconnecting to " peer-id)
     (d/future
       (-> (d/chain
            (connect-to-peer @state [peer-id (get-in @state [:peers peer-id])])
            (fn [[peer-id peer-value]]
              (swap! state (fn [s]
-                            (-> (assoc-in s [:peers peer-id] peer-value)
-                                (dissoc [:peers peer-id :connect-pending]))))))
+                            (let [s (dissoc-in s [:peers peer-id] :connect-pending)]
+                              (if (stream-open? (get-in s [:peers peer-id :socket]))
+                                s
+                                (do
+                                  (when-let [socket (:socket s)]
+                                    (s/close! socket))
+                                  (assoc-in s [:peers peer-id] peer-value))))))))
           (d/catch (fn [ex]
                      (swap! state update-in [:peers peer-id] dissoc :connect-pending)
                      (warn ex "[" (:id @state) "] caught exception in reconnect-to-peer")))))))
@@ -144,19 +151,19 @@
   ;;; TODO: refactor
   (let [peer-id (:dst p)
         socket (get-in state [:peers peer-id :socket])]
-    (if (and socket (not (s/closed? socket)))
+    (if (stream-open? socket)
       (s/put! socket p)
-      false)))
+      (do
+        (warn "socket not open :(")
+        false))))
 
-(defmacro dissoc-in [s ks k]
- `(update-in ~s [~@ks] dissoc ~k))
 
 (defn- send-client-packet
   "send a packect to the client, won't reconnect"
   [state p]
   (let [client (:client-dst p)
         socket (get-in state [:clients client :socket])]
-    (if (and socket (s/closed? socket))
+    (if (stream-closed? socket)
       (dissoc-in state [:clients client] :socket)
       (do
         (s/put! socket (dissoc p :client-dst))
@@ -178,10 +185,9 @@
   (let [pkts (:tx-queue @state)]
     (swap! state assoc :tx-queue '())
     (doseq [p pkts]
-      (when-not (send-pkt @state p))
-          ;; (warn (:id @state) " trying to reconnect to peer: " (:dst (first pkts)))
-      ;;(reconnect-to-peer state (:dst (first pkts)))
-          )))
+      (when-not (send-pkt @state p)
+        (warn (:id @state) " trying to reconnect to peer: " (:dst p))
+        (reconnect-to-peer! state (:dst p) p)))))
 
 (defn- handle-rx-pkt!
   "appends the pkt and runs update"

@@ -19,7 +19,6 @@
                                      @server server))))
 
 (defn- connect [server timeout]
-  (connect-to-peers server)
   (swap! server assoc :event-loop
          (net/event-loop server timeout))
   server)
