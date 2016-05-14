@@ -54,6 +54,8 @@
   (d/chain (tcp/client {:host host, :port port})
            #(wrap-duplex-stream protocol %)))
 
+(declare transmit!)
+
 (defn- connect-peer-socket!
   "Connects the peer messages to the :rx-stream"
   [state socket handshake]
@@ -65,7 +67,8 @@
              state)))
 
   (when (= :leader (:type @state))
-    (swap! state l/broadcast-heartbeat))
+    (swap! state l/broadcast-heartbeat)
+    (transmit! state))
 
   (s/connect socket (:rx-stream @state) {:downstream? false
                                          :upstream? true}))
@@ -133,11 +136,13 @@
       (-> (d/chain
            (connect-to-peer @state [peer-id (get-in @state [:peers peer-id])])
            (fn [[peer-id peer-value]]
+             (warn (:id @state) " REconnected to peer: " peer-id)
              (swap! state (fn [s]
                             (let [s (dissoc-in s [:peers peer-id] :connect-pending)]
                               (if (stream-open? (get-in s [:peers peer-id :socket]))
                                 s
                                 (do
+                                  (warn (:id s) " in else clause")
                                   (when-let [socket (:socket s)]
                                     (s/close! socket))
                                   (assoc-in s [:peers peer-id] peer-value))))))))
@@ -154,7 +159,7 @@
     (if (stream-open? socket)
       (s/put! socket p)
       (do
-        (warn "socket not open :(")
+        (warn (:id state) " failed sending pkt to: " (:dst p))
         false))))
 
 
@@ -186,7 +191,6 @@
     (swap! state assoc :tx-queue '())
     (doseq [p pkts]
       (when-not (send-pkt @state p)
-        (warn (:id @state) " trying to reconnect to peer: " (:dst p))
         (reconnect-to-peer! state (:dst p) p)))))
 
 (defn- handle-rx-pkt!

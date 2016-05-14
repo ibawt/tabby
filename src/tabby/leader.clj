@@ -41,6 +41,8 @@
 (defn- peer-timeout?
   "checks if the peer is ready to send another heartbeat"
   [state peer]
+  (when-not (get-in state [:next-timeout peer])
+    (warn (:id state) "wtf is peer man: " peer))
   (<= (get-in state [:next-timeout peer]) 0))
 
 (defn- apply-peer-timeouts [state dt]
@@ -131,6 +133,8 @@
   [state dt]
   (utils/foreach-peer (apply-peer-timeouts state dt)
                 (fn [s [p v]]
+                  (when-not p
+                    (warn "peers: " (:peers s)))
                   (if (peer-timeout? s p)
                     (-> (send-peer-update s [p])
                         (update-peer-timeout p))
