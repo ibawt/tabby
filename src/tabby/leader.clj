@@ -3,8 +3,10 @@
             [tabby.utils :as utils]
             [clojure.tools.logging :refer [warn info]]))
 
+(def timeout 30)
+
 (defn- heart-beat-timeout []
-  (+ (rand-int 15) 15))
+  (+ (rand-int (/ timeout 2)) (/ timeout 2)))
 
 (defn- make-append-log-pkt [state peer]
   (assert peer "peer shouldn't be nil")
@@ -48,7 +50,7 @@
 (defn- apply-peer-timeouts [state dt]
   (update state :next-timeout utils/mapf - dt))
 
-(def ^:private default-peer-next-timeout 30)
+(def ^:private default-peer-next-timeout timeout)
 
 (defn- peer-next-timeout [state]
   (or (:peer-next-timeout state) default-peer-next-timeout))

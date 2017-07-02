@@ -70,8 +70,8 @@
     (swap! state l/broadcast-heartbeat)
     (transmit! state))
 
-  (s/connect socket (:rx-stream @state) {:downstream? false
-                                         :upstream? true}))
+  (s/connect socket (:rx-stream @state)
+             {:downstream? false :upstream? true}))
 
 (defn- connect-table-tennis-socket
   ":ping -> :pong"
@@ -142,9 +142,8 @@
                               (if (stream-open? (get-in s [:peers peer-id :socket]))
                                 s
                                 (do
-                                  (warn (:id s) " in else clause")
-                                  (when-let [socket (:socket s)]
-                                    (s/close! socket))
+                                  ;; (when-let [socket (:socket s)]
+                                  ;;   (s/close! socket))
                                   (assoc-in s [:peers peer-id] peer-value))))))))
           (d/catch (fn [ex]
                      (swap! state update-in [:peers peer-id] dissoc :connect-pending)
@@ -218,7 +217,9 @@
       (transmit! state))
 
     (if-not (stream-open? (:rx-stream @state))
-      :exit
+      (do
+        (warn (:id @state) " stream closed! exiting")
+        :exit)
       (-> (d/chain (s/try-take! (:rx-stream @state) ::none
                                 (or timeout default-timeout) ::timeout)
                    (fn [msg]
@@ -266,7 +267,7 @@
       (update :peers utils/mapf (fn [x]
                                   (when-let [socket (:socket x)]
                                     (s/close! socket))
-                                  (dissoc x :socket)))
+                                  (dissoc (dissoc x :socket) :connect-pending)))
       (update :rx-stream (fn [x]
                            (when x
                              (s/close! x))

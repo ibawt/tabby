@@ -123,6 +123,10 @@
     (kill id)
     id))
 
+(defn kill-and-rez-follower []
+  (let [id (kill-random-follower)]
+    (rez id)))
+
 (defn while-not-leader []
   (future (loop [l (find-leader)]
             (Thread/yield)
