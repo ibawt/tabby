@@ -35,9 +35,9 @@
            (client/close ~klient))))))
 
 (defn create-client []
-  (client/make-local-client [{:host "127.0.0.1" :port 9090}
-                             {:host "127.0.0.1" :port 9091}
-                             {:host "127.0.0.1" :port 9092}]))
+  (client/make-local-client [{:host "127.0.0.1" :port 9495}
+                             {:host "127.0.0.1" :port 9496}
+                             {:host "127.0.0.1" :port 9496}]))
 
 (defn- unatom [x]
   (if (instance? clojure.lang.Atom x)
