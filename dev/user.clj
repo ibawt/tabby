@@ -123,6 +123,32 @@
     (kill id)
     id))
 
+(defn kill-and-rez-anyone []
+  (let [id (first (first (shuffle (seq (:servers cluster)))))]
+    (kill id)
+    (Thread/sleep 300)
+    (rez id)
+    nil))
+
+(defn kill-leader []
+  (kill (first (find-leader))))
+
+(defn kill-and-rez-leader []
+  (let [[id _] (find-leader)]
+    (println "Leader is: " id)
+    (warn "+====== KILLING LEADER: " id " =======+")
+    (kill id)
+    (Thread/sleep 600)
+    (warn "+====== REZZING OLD LEADER: " id " ========+")
+    (rez id)
+    nil))
+
+(defn kill-and-rez-follower []
+  (let [id (kill-random-follower)]
+    (Thread/sleep 300)
+    (rez id)
+    nil))
+
 (defn while-not-leader []
   (future (loop [l (find-leader)]
             (Thread/yield)
@@ -136,3 +162,6 @@
   (assert (= :ok (set-value :a "a")))
   (kill-random-follower)
   (assert (= :ok (set-value :b "b"))))
+
+(defn types []
+  (map (fn [[x y]] [x (select-keys (unatom y) [:type :current-term :leader-id])]) (seq (:servers cluster))) )

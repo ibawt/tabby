@@ -9,9 +9,12 @@
   (<= (:election-timeout state) 0))
 
 (defn- request-vote [state params]
+  ;; TODO: refactor this
   (let [r {:term (:current-term state)
            :vote-granted?
            (and
+            ;; (or (nil? (:leader-id state))
+            ;;     (= :candidate (:type state)))
             (utils/valid-term? state params)
             (not (:voted-for state))
             (log/prev-log-term-equals? state params))}]

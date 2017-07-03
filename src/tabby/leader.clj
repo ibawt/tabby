@@ -3,8 +3,10 @@
             [tabby.utils :as utils]
             [clojure.tools.logging :refer [warn info]]))
 
+(def timeout 30)
+
 (defn- heart-beat-timeout []
-  (+ (rand-int 15) 15))
+  (+ (rand-int (/ timeout 2)) (/ timeout 2)))
 
 (defn- make-append-log-pkt [state peer]
   (assert peer "peer shouldn't be nil")
@@ -41,12 +43,14 @@
 (defn- peer-timeout?
   "checks if the peer is ready to send another heartbeat"
   [state peer]
+  (when-not (get-in state [:next-timeout peer])
+    (warn (:id state) "wtf is peer man: " peer))
   (<= (get-in state [:next-timeout peer]) 0))
 
 (defn- apply-peer-timeouts [state dt]
   (update state :next-timeout utils/mapf - dt))
 
-(def ^:private default-peer-next-timeout 30)
+(def ^:private default-peer-next-timeout timeout)
 
 (defn- peer-next-timeout [state]
   (or (:peer-next-timeout state) default-peer-next-timeout))
@@ -131,6 +135,8 @@
   [state dt]
   (utils/foreach-peer (apply-peer-timeouts state dt)
                 (fn [s [p v]]
+                  (when-not p
+                    (warn "peers: " (:peers s)))
                   (if (peer-timeout? s p)
                     (-> (send-peer-update s [p])
                         (update-peer-timeout p))

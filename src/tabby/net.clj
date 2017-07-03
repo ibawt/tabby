@@ -6,10 +6,12 @@
             [taoensso.nippy :as nippy]
             [manifold.deferred :as d]
             [tabby.leader :as l]
+            [tabby.follower :as f]
             [manifold.stream :as s]
             [tabby.client-state :as cs]
             [tabby.server :as server]
-            [tabby.utils :as utils]))
+            [tabby.utils :as utils]
+            [tabby.follower :as f]))
 
 (def ^:private protocol
   "The tabby protocol definition."
@@ -22,6 +24,12 @@
   (and x (not (s/closed? x))))
 
 (def ^:private stream-closed? (complement stream-open?))
+
+(defmacro only-if [v c & body]
+  `(if ~c
+     (do
+       ~@body)
+     ~v))
 
 (defn- wrap-duplex-stream
   "wrap the stream in the protocol"
@@ -54,21 +62,20 @@
   (d/chain (tcp/client {:host host, :port port})
            #(wrap-duplex-stream protocol %)))
 
+(declare transmit!)
+
 (defn- connect-peer-socket!
   "Connects the peer messages to the :rx-stream"
   [state socket handshake]
   (info (:id @state) " accepting peer connection from: " (:src handshake))
-  (swap! state
-         (fn [state]
-           (if (stream-closed? (get-in state [:peers (:src handshake) :socket]))
-             (assoc-in state [:peers (:src handshake) :socket] socket)
-             state)))
+  (swap! state assoc-in [:peers (:src handshake) :socket] socket)
 
   (when (= :leader (:type @state))
-    (swap! state l/broadcast-heartbeat))
+    (swap! state l/broadcast-heartbeat)
+    (transmit! state))
 
-  (s/connect socket (:rx-stream @state) {:downstream? false
-                                         :upstream? true}))
+  (s/connect socket (:rx-stream @state)
+             {:downstream? false :upstream? true}))
 
 (defn- connect-table-tennis-socket
   ":ping -> :pong"
@@ -107,7 +114,7 @@
               (s/close! s)))
           state s handshake)
          (d/catch (fn [ex]
-                    (warn ex "Caught exception!")
+                    (warn ex "Caught exception in connection-handler: " (.getMessage ex))
                     (s/close! s)))))))
 
 (defn connect-to-peer
@@ -121,28 +128,24 @@
           (s/connect socket (:rx-stream state) {:downstream? false})
           [id (assoc peer :socket socket)])
         (d/catch (fn [ex]
-                   (warn (:id state) "caught exception in connecting to: " id))))))
+                   (warn (:id state) "caught exception in connecting to: " id " :" (.getMessage ex)))))))
 
 (defmacro dissoc-in [s ks k]
   `(update-in ~s [~@ks] dissoc ~k))
 
 (defn- reconnect-to-peer! [state peer-id p]
+  (assert peer-id)
   (when-not (get-in @state [:peers peer-id :connect-pending])
     (swap! state assoc-in [:peers peer-id :connect-pending] true)
     (d/future
       (-> (d/chain
            (connect-to-peer @state [peer-id (get-in @state [:peers peer-id])])
            (fn [[peer-id peer-value]]
-             (swap! state (fn [s]
-                            (let [s (dissoc-in s [:peers peer-id] :connect-pending)]
-                              (if (stream-open? (get-in s [:peers peer-id :socket]))
-                                s
-                                (do
-                                  (when-let [socket (:socket s)]
-                                    (s/close! socket))
-                                  (assoc-in s [:peers peer-id] peer-value))))))))
+             (when peer-id
+               (swap! state assoc-in [:peers peer-id] (dissoc peer-value :connect-pending)))))
           (d/catch (fn [ex]
                      (swap! state update-in [:peers peer-id] dissoc :connect-pending)
+                     (warn (:id @state) "exception is: " (.getMessage ex))
                      (warn ex "[" (:id @state) "] caught exception in reconnect-to-peer")))))))
 
 (defn- send-peer-packet
@@ -154,7 +157,7 @@
     (if (stream-open? socket)
       (s/put! socket p)
       (do
-        (warn "socket not open :(")
+        (warn (:id state) " failed sending pkt to: " (:dst p) " : pkt: " p)
         false))))
 
 
@@ -186,7 +189,6 @@
     (swap! state assoc :tx-queue '())
     (doseq [p pkts]
       (when-not (send-pkt @state p)
-        (warn (:id @state) " trying to reconnect to peer: " (:dst p))
         (reconnect-to-peer! state (:dst p) p)))))
 
 (defn- handle-rx-pkt!
@@ -204,7 +206,7 @@
   (swap! state server/update-state dt)
   true)
 
-(def ^:private default-timeout 10)
+(def ^:private default-timeout 50)
 
 (defn event-loop
   "Runs the event loop for a server instance.  Returns a deferred."
@@ -214,7 +216,9 @@
       (transmit! state))
 
     (if-not (stream-open? (:rx-stream @state))
-      :exit
+      (do
+        (warn (:id @state) " stream closed! exiting")
+        :exit)
       (-> (d/chain (s/try-take! (:rx-stream @state) ::none
                                 (or timeout default-timeout) ::timeout)
                    (fn [msg]
@@ -224,7 +228,7 @@
                              (handle-rx-pkt! state (delta-t t) msg))
                        (d/recur (current-time)))))
           (d/catch (fn [ex]
-                     (warn ex (:id @state) ": caught exception in event loop")
+                     (warn ex (:id @state) ": caught exception in event loop: " (.getMessage ex))
                      (s/close! (:rx-stream @state))))))))
 
 
@@ -232,6 +236,7 @@
   "Starts the server listening."
   [server port]
   (swap! server assoc :election-timeout (utils/random-election-timeout @server))
+  (swap! server (fn [x] (f/become-follower x nil)))
   (tcp/start-server
    (fn [s info]
      ((connection-handler server) (wrap-duplex-stream protocol s) info))
@@ -253,7 +258,6 @@
   "Stops the server listening socket and rx stream"
   [server]
   (assert (not (instance? clojure.lang.Atom server)))
-
   (-> server
       (update :server-socket (fn [^java.io.Closeable s]
                                (when s
@@ -262,7 +266,7 @@
       (update :peers utils/mapf (fn [x]
                                   (when-let [socket (:socket x)]
                                     (s/close! socket))
-                                  (dissoc x :socket)))
+                                  (dissoc (dissoc x :socket) :connect-pending)))
       (update :rx-stream (fn [x]
                            (when x
                              (s/close! x))

@@ -10,7 +10,7 @@
 
 
 (defn test-cluster []
-  (-> (create-network-cluster 10 9090)
+  (-> (create-network-cluster 50 9495)
       (cluster/init-cluster 3)
       (assoc-in [:servers "0.localnet:0" :election-timeout] 0)
       (assoc-in [:servers "1.localnet:1" :election-timeout-fn]
@@ -35,9 +35,9 @@
            (client/close ~klient))))))
 
 (defn create-client []
-  (client/make-local-client [{:host "127.0.0.1" :port 9090}
-                             {:host "127.0.0.1" :port 9091}
-                             {:host "127.0.0.1" :port 9092}]))
+  (client/make-local-client [{:host "127.0.0.1" :port 9495}
+                             {:host "127.0.0.1" :port 9496}
+                             {:host "127.0.0.1" :port 9496}]))
 
 (defn- unatom [x]
   (if (instance? clojure.lang.Atom x)
