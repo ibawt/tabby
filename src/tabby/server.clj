@@ -20,8 +20,7 @@
   [state params]
   (let [body (:body params)]
     (if (or (and (:term body)
-                 (< (:current-term state) (:term body))
-                 (= :candidate (:type state)))
+                 (< (:current-term state) (:term body)))
             (and (= :candidate (:type state))
                  (= :append-entries (:type params))
                  (<= (:current-term state) (:term body))))

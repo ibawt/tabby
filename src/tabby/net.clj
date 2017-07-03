@@ -6,10 +6,12 @@
             [taoensso.nippy :as nippy]
             [manifold.deferred :as d]
             [tabby.leader :as l]
+            [tabby.follower :as f]
             [manifold.stream :as s]
             [tabby.client-state :as cs]
             [tabby.server :as server]
-            [tabby.utils :as utils]))
+            [tabby.utils :as utils]
+            [tabby.follower :as f]))
 
 (def ^:private protocol
   "The tabby protocol definition."
@@ -22,6 +24,12 @@
   (and x (not (s/closed? x))))
 
 (def ^:private stream-closed? (complement stream-open?))
+
+(defmacro only-if [v c & body]
+  `(if ~c
+     (do
+       ~@body)
+     ~v))
 
 (defn- wrap-duplex-stream
   "wrap the stream in the protocol"
@@ -60,11 +68,7 @@
   "Connects the peer messages to the :rx-stream"
   [state socket handshake]
   (info (:id @state) " accepting peer connection from: " (:src handshake))
-  (swap! state
-         (fn [state]
-           (if (stream-closed? (get-in state [:peers (:src handshake) :socket]))
-             (assoc-in state [:peers (:src handshake) :socket] socket)
-             state)))
+  (swap! state assoc-in [:peers (:src handshake) :socket] socket)
 
   (when (= :leader (:type @state))
     (swap! state l/broadcast-heartbeat)
@@ -110,7 +114,7 @@
               (s/close! s)))
           state s handshake)
          (d/catch (fn [ex]
-                    (warn ex "Caught exception!")
+                    (warn ex "Caught exception in connection-handler: " (.getMessage ex))
                     (s/close! s)))))))
 
 (defn connect-to-peer
@@ -124,29 +128,29 @@
           (s/connect socket (:rx-stream state) {:downstream? false})
           [id (assoc peer :socket socket)])
         (d/catch (fn [ex]
-                   (warn (:id state) "caught exception in connecting to: " id))))))
+                   (warn (:id state) "caught exception in connecting to: " id " :" (.getMessage ex)))))))
 
 (defmacro dissoc-in [s ks k]
   `(update-in ~s [~@ks] dissoc ~k))
 
 (defn- reconnect-to-peer! [state peer-id p]
+  (assert peer-id)
   (when-not (get-in @state [:peers peer-id :connect-pending])
     (swap! state assoc-in [:peers peer-id :connect-pending] true)
     (d/future
       (-> (d/chain
            (connect-to-peer @state [peer-id (get-in @state [:peers peer-id])])
            (fn [[peer-id peer-value]]
-             (warn (:id @state) " REconnected to peer: " peer-id)
-             (swap! state (fn [s]
-                            (let [s (dissoc-in s [:peers peer-id] :connect-pending)]
-                              (if (stream-open? (get-in s [:peers peer-id :socket]))
-                                s
-                                (do
-                                  ;; (when-let [socket (:socket s)]
-                                  ;;   (s/close! socket))
+             (when peer-id
+               (warn (:id @state) " REconnected to peer: " peer-id)
+               (swap! state (fn [s]
+                              (let [s (dissoc-in s [:peers peer-id] :connect-pending)]
+                                (if (stream-open? (get-in s [:peers peer-id :socket]))
+                                  s
                                   (assoc-in s [:peers peer-id] peer-value))))))))
           (d/catch (fn [ex]
                      (swap! state update-in [:peers peer-id] dissoc :connect-pending)
+                     (warn (:id @state) "exception is: " (.getMessage ex))
                      (warn ex "[" (:id @state) "] caught exception in reconnect-to-peer")))))))
 
 (defn- send-peer-packet
@@ -158,7 +162,7 @@
     (if (stream-open? socket)
       (s/put! socket p)
       (do
-        (warn (:id state) " failed sending pkt to: " (:dst p))
+        (warn (:id state) " failed sending pkt to: " (:dst p) " : pkt: " p)
         false))))
 
 
@@ -229,7 +233,7 @@
                              (handle-rx-pkt! state (delta-t t) msg))
                        (d/recur (current-time)))))
           (d/catch (fn [ex]
-                     (warn ex (:id @state) ": caught exception in event loop")
+                     (warn ex (:id @state) ": caught exception in event loop: " (.getMessage ex))
                      (s/close! (:rx-stream @state))))))))
 
 
@@ -237,6 +241,8 @@
   "Starts the server listening."
   [server port]
   (swap! server assoc :election-timeout (utils/random-election-timeout @server))
+  (swap! server (fn [x] (f/become-follower x nil)))
+  ;; (swap! server assoc :tx-queue '())
   (tcp/start-server
    (fn [s info]
      ((connection-handler server) (wrap-duplex-stream protocol s) info))
