@@ -142,12 +142,7 @@
            (connect-to-peer @state [peer-id (get-in @state [:peers peer-id])])
            (fn [[peer-id peer-value]]
              (when peer-id
-               (warn (:id @state) " REconnected to peer: " peer-id)
-               (swap! state (fn [s]
-                              (let [s (dissoc-in s [:peers peer-id] :connect-pending)]
-                                (if (stream-open? (get-in s [:peers peer-id :socket]))
-                                  s
-                                  (assoc-in s [:peers peer-id] peer-value))))))))
+               (swap! state assoc-in [:peers peer-id] (dissoc peer-value :connect-pending)))))
           (d/catch (fn [ex]
                      (swap! state update-in [:peers peer-id] dissoc :connect-pending)
                      (warn (:id @state) "exception is: " (.getMessage ex))
@@ -211,7 +206,7 @@
   (swap! state server/update-state dt)
   true)
 
-(def ^:private default-timeout 10)
+(def ^:private default-timeout 50)
 
 (defn event-loop
   "Runs the event loop for a server instance.  Returns a deferred."
@@ -242,7 +237,6 @@
   [server port]
   (swap! server assoc :election-timeout (utils/random-election-timeout @server))
   (swap! server (fn [x] (f/become-follower x nil)))
-  ;; (swap! server assoc :tx-queue '())
   (tcp/start-server
    (fn [s info]
      ((connection-handler server) (wrap-duplex-stream protocol s) info))
@@ -264,7 +258,6 @@
   "Stops the server listening socket and rx stream"
   [server]
   (assert (not (instance? clojure.lang.Atom server)))
-
   (-> server
       (update :server-socket (fn [^java.io.Closeable s]
                                (when s
