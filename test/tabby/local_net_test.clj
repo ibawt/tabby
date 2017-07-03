@@ -10,7 +10,7 @@
 
 
 (defn test-cluster []
-  (-> (create-network-cluster 10 9090)
+  (-> (create-network-cluster 50 9495)
       (cluster/init-cluster 3)
       (assoc-in [:servers "0.localnet:0" :election-timeout] 0)
       (assoc-in [:servers "1.localnet:1" :election-timeout-fn]
