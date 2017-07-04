@@ -4,9 +4,10 @@
   :license {:name "Eclipse Public License"
             :url "http://www.eclipse.org/legal/epl-v10.html"}
   :dependencies [[org.clojure/clojure "1.8.0"]
-                 [aleph "0.4.1"]
+                 [org.clojure/tools.cli "0.3.5"]
+                 [aleph "0.4.3"]
                  [gloss "0.2.6"]
-                 [com.taoensso/nippy "2.11.1"]
+                 [com.taoensso/nippy "2.13.0"]
                  [log4j "1.2.17" :exclusions [javax.mail/mail
                                               javax.jms/jms
                                               com.sun.jdmk/jmxtools
