@@ -252,6 +252,7 @@
             (atom server))]
     (swap! s assoc :rx-stream (s/stream (or (:rx-buffer-size @s) rx-buffer-size)))
     (swap! s assoc :server-socket (start-server! s port))
+    (info "Listening on " port)
     s))
 
 (defn stop-server
