@@ -1,0 +1,113 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: tabby-0
+spec:
+  ports:
+  - port: 7659
+    targetPort: 7659
+  selector:
+    name: tabby-0
+---
+apiVersion: apps/v1beta1
+kind: Deployment
+metadata:
+  name: tabby-0
+spec:
+  selector:
+    matchLabels:
+      name: tabby-0
+  template:
+    metadata:
+      labels:
+        name: tabby-0
+    spec:
+      containers:
+        - name: tabby-0
+          image: tabby:latest
+          imagePullPolicy: Never
+          args:
+          - -p
+          - "7659"
+          - --peers
+          - "tabby-1:7659=1,tabby-2:7659=2"
+          - --id
+          - "0"
+          ports:
+          - containerPort: 7659
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: tabby-1
+spec:
+  ports:
+  - port: 7659
+    targetPort: 7659
+  selector:
+    name: tabby-1
+---
+apiVersion: apps/v1beta1
+kind: Deployment
+metadata:
+  name: tabby-1
+spec:
+  selector:
+    matchLabels:
+      name: tabby-1
+  template:
+    metadata:
+      labels:
+        name: tabby-1
+    spec:
+      containers:
+        - name: tabby-1
+          image: tabby:latest
+          imagePullPolicy: Never
+          args:
+          - -p
+          - "7659"
+          - --peers
+          - "tabby-0:7659=0,tabby-2:7659=2"
+          - --id
+          - "1"
+          ports:
+          - containerPort: 7659
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: tabby-2
+spec:
+  ports:
+  - port: 7659
+    targetPort: 7659
+  selector:
+    name: tabby-2
+---
+apiVersion: apps/v1beta1
+kind: Deployment
+metadata:
+  name: tabby-2
+spec:
+  selector:
+    matchLabels:
+      name: tabby-2
+  template:
+    metadata:
+      labels:
+        name: tabby-2
+    spec:
+      containers:
+        - name: tabby-2
+          image: tabby:latest
+          imagePullPolicy: Never
+          args:
+          - -p
+          - "7659"
+          - --peers
+          - "tabby-0:7659=0,tabby-1:7659=1"
+          - --id
+          - "2"
+          ports:
+          - containerPort: 7659

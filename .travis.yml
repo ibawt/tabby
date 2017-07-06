@@ -1,4 +1,5 @@
-lein: lein2
-language: clojure
-jdk:
-  - oraclejdk8
+sudo: required
+services:
+- docker
+script:
+- script/test
