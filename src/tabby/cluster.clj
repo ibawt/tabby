@@ -131,10 +131,9 @@
 
 (defn create [baseport num]
   (let [servers (reduce #(merge %1 {(str %2 ".localnet:" %2)
-                                    (merge (server/create-server (str %2 ".localnet:" %2))
+                                    (merge (server/create-server {:id (str %2 ".localnet:" %2)})
                                            {:hostname "localhost" :port (+ baseport %2)})}) {} (range num))]
     (->NoNetworkCluster (set-peers servers) 0)))
 
 (defn create-no-network-cluster [num]
   (map->NoNetworkCluster (create num)))
-

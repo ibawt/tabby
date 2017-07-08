@@ -3,3 +3,5 @@
 lein uberjar
 
 docker build -t tabby .
+
+rm -rf target

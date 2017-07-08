@@ -3,6 +3,7 @@ kind: Service
 metadata:
   name: tabby-0
 spec:
+  type: NodePort
   ports:
   - port: 7659
     targetPort: 7659
@@ -33,14 +34,24 @@ spec:
           - "tabby-1:7659=1,tabby-2:7659=2"
           - --id
           - "0"
+          - --data-dir
+          - /data
           ports:
           - containerPort: 7659
+          volumeMounts:
+          - name: data
+            mountPath: /data
+      volumes:
+      - name: data
+        hostPath:
+          path: /data
 ---
 apiVersion: v1
 kind: Service
 metadata:
   name: tabby-1
 spec:
+  type: NodePort
   ports:
   - port: 7659
     targetPort: 7659
@@ -71,14 +82,24 @@ spec:
           - "tabby-0:7659=0,tabby-2:7659=2"
           - --id
           - "1"
+          - --data-dir
+          - /data
           ports:
           - containerPort: 7659
+          volumeMounts:
+          - name: data
+            mountPath: /data
+      volumes:
+      - name: data
+        hostPath:
+          path: /data
 ---
 apiVersion: v1
 kind: Service
 metadata:
   name: tabby-2
 spec:
+  type: NodePort
   ports:
   - port: 7659
     targetPort: 7659
@@ -109,5 +130,14 @@ spec:
           - "tabby-0:7659=0,tabby-1:7659=1"
           - --id
           - "2"
+          - --data-dir
+          - /data
           ports:
           - containerPort: 7659
+          volumeMounts:
+          - name: data
+            mountPath: /data
+      volumes:
+      - name: data
+        hostPath:
+          path: /data
