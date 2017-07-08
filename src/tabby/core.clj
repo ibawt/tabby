@@ -10,7 +10,10 @@
   (:import [java.io File])
   (:gen-class))
 
-(defn- parse-peers [s]
+(defn- parse-peers
+  "parses a list of form x.y.z:323=1,y.a.b:32=2
+   into a map like {1 {:hostname x.y.z :port 323}}"
+  [s]
   (into {}
         (map
          (fn [x]
@@ -27,18 +30,22 @@
     :parse-fn #(Integer/parseInt %)
     :validate-fn [#(and (> % 1024) (< % 65535))]]
    ["-i" "--id ID" "Unique ID"]
-   ["-P" "--peers PEERLIST"
+   ["-P" "--peers PEERLIST" "list of peers in form x.y.z:<port>=ID,..."
     :parse-fn parse-peers]
    ["-t" "--timeout" "event loop timeout"
     :default 50
     :parse-fn #(Integer/parseInt %)
     :validate-fn [pos?]]
-   ["-d" "--data-dir" "data directory"
-    :validate-fn dir-exists?]])
+   ["-d" "--data-dir DIR" "data directory"
+    :validate-fn dir-exists?]
+   ["-h" "--help" "show summary"]])
 
 (defn- parse-args [args]
-  (let [opts (cli/parse-opts args cli-options)]
-    (:options opts)))
+  (let [{:keys [options errors summary] } (cli/parse-opts args cli-options)]
+    (cond
+      (:help options) (do (println summary) (System/exit 0))
+      errors (do (println errors) (System/exit 1))
+      :else options)))
 
 (defn -main [& args]
   (try
@@ -46,7 +53,7 @@
       (info "options: " options)
       (let [server (-> (server/create-server options)
                        (#(if (:data-dir %)
-                           (store/restore state)
+                           (store/restore %)
                            %))
                        (net/create-server (:port options)))]
 

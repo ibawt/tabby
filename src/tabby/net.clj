@@ -157,7 +157,7 @@
     (if (stream-open? socket)
       (s/put! socket p)
       (do
-        (warn (:id state) " failed sending pkt to: " (:dst p) " : pkt: " p)
+        ;; (warn (:id state) " failed sending pkt to: " (:dst p) " : pkt: " p)
         false))))
 
 

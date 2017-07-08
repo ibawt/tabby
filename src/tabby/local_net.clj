@@ -2,10 +2,12 @@
   (:require [clojure.tools.logging :refer [warn info]]
             [manifold.deferred :as d]
             [manifold.stream :as s]
+            [tabby.state-store :as store]
             [tabby.cluster :as cluster]
             [tabby.net :as net]
             [tabby.server :as server]
-            [tabby.utils :as utils]))
+            [tabby.utils :as utils]
+            [tabby.state-store :as store]))
 
 (defn- connect-to-peers [server]
   (let [peers (->> (map #(net/connect-to-peer @server %) (:peers @server))
@@ -45,12 +47,20 @@
                                    (assoc :port (+ i base-port))
                                    (assoc :hostname (str i ":" (+ i base-port))))]) servers)))
 
+(defn- get-data-dir []
+  (str (System/getenv "HOME") "/devel/tabby/tmp"))
+
+(defn- add-data-dir [servers]
+  (utils/mapf servers assoc :data-dir (get-data-dir)))
+
 (defrecord LocalNetworkCluster
     [servers time base-port timeout]
   cluster/Cluster
+
   (init-cluster [this num]
     (-> (merge this (cluster/create base-port num))
-        (update :servers assign-ports base-port)))
+        (update :servers assign-ports base-port)
+        (update :servers add-data-dir)))
 
   (start-cluster [this]
     (start this))
@@ -63,7 +73,7 @@
   (rez-server [this id]
     (warn "Rezing server: " id)
     (update-in this [:servers id] (fn [x]
-                                    (swap! x assoc :trace true)
+                                    (swap! x store/restore)
                                     (connect (start-server x) (:timeout this))
                                     x)))
 

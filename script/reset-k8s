@@ -1,0 +1,14 @@
+#!/bin/bash
+
+set -e
+
+kubectl scale --replicas=0 deployment/tabby-0
+kubectl scale --replicas=0 deployment/tabby-1
+kubectl scale --replicas=0 deployment/tabby-2
+
+rm tmp/*
+
+
+kubectl scale --replicas=1 deployment/tabby-0
+kubectl scale --replicas=1 deployment/tabby-1
+kubectl scale --replicas=1 deployment/tabby-2
