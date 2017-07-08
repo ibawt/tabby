@@ -4,7 +4,7 @@
 
 (deftest create-server-test
   (testing "initial state"
-    (let [s (create-server 42)]
+    (let [s (create-server {:id 42})]
       (is (= 0 (:current-term s)))
       (is (= nil (:voted-for s)))
       (is (= [{:term 0 :cmd {:op :reset}}] (:log s)))

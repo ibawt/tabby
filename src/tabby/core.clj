@@ -3,9 +3,11 @@
             [tabby.local-net :as local-net]
             [clojure.tools.logging :refer [warn info]]
             [clojure.tools.cli :as cli]
+            [tabby.state-store :as store]
             [tabby.net :as net]
             [tabby.server :as server]
             [tabby.utils :as u])
+  (:import [java.io File])
   (:gen-class))
 
 (defn- parse-peers [s]
@@ -16,9 +18,12 @@
              [id {:hostname host :port (Integer/parseInt port)}]))
          (.split s ","))))
 
+(defn- dir-exists? [dir]
+  (.isDirectory (File. dir)))
+
 (def ^:private cli-options
   [["-p" "--port PORT" "Port number"
-   :default 8080
+    :default 7659
     :parse-fn #(Integer/parseInt %)
     :validate-fn [#(and (> % 1024) (< % 65535))]]
    ["-i" "--id ID" "Unique ID"]
@@ -27,7 +32,9 @@
    ["-t" "--timeout" "event loop timeout"
     :default 50
     :parse-fn #(Integer/parseInt %)
-    :validate-fn [pos?]]])
+    :validate-fn [pos?]]
+   ["-d" "--data-dir" "data directory"
+    :validate-fn dir-exists?]])
 
 (defn- parse-args [args]
   (let [opts (cli/parse-opts args cli-options)]
@@ -37,9 +44,11 @@
   (try
     (let [options (parse-args args)]
       (info "options: " options)
-      (let [server (-> (server/create-server (:id options))
-                      (server/set-peers (:peers options))
-                      (net/create-server (:port options)))]
+      (let [server (-> (server/create-server options)
+                       (#(if (:data-dir %)
+                           (store/restore state)
+                           %))
+                       (net/create-server (:port options)))]
 
         (swap! server assoc :event-loop (net/event-loop server (:timeout options)))
         @(:event-loop @server)))

@@ -14,7 +14,7 @@
 
 (defn set-leader [this host port]
   (-> (close-socket this)
-      (assoc :leader {:host host :port port})))
+      (assoc :leader {:host (or (:host-override this) host) :port port})))
 
 (defn- set-next-leader [client]
   (let [s (:servers client)
@@ -25,10 +25,10 @@
 (defn- connect-to-leader
   [client]
   (d/catch
-      (d/let-flow [socket (net/client (get-in client [:leader :host])
+      (d/let-flow [socket (net/client (or (:host-override client) (get-in client [:leader :host]))
                                       (get-in client [:leader :port]))]
-                  (s/put! socket {:type :client-handshake})
-                  (assoc client :socket socket))
+        (s/put! socket {:type :client-handshake})
+        (assoc client :socket socket))
       (fn [e]
         (warn e "caught exception in connect")
         (set-next-leader client))))
@@ -60,7 +60,7 @@
   (set-or-create [this key value]))
 
 (defrecord LocalClient
-    [servers socket leader]
+    [servers socket leader host-override]
   Client
   (close [this]
     (when (and socket (not (s/closed? socket)))

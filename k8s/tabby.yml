@@ -3,6 +3,7 @@ kind: Service
 metadata:
   name: tabby-0
 spec:
+  type: NodePort
   ports:
   - port: 7659
     targetPort: 7659
@@ -41,6 +42,7 @@ kind: Service
 metadata:
   name: tabby-1
 spec:
+  type: NodePort
   ports:
   - port: 7659
     targetPort: 7659
@@ -79,6 +81,7 @@ kind: Service
 metadata:
   name: tabby-2
 spec:
+  type: NodePort
   ports:
   - port: 7659
     targetPort: 7659

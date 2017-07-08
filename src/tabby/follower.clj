@@ -13,8 +13,6 @@
   (let [r {:term (:current-term state)
            :vote-granted?
            (and
-            ;; (or (nil? (:leader-id state))
-            ;;     (= :candidate (:type state)))
             (utils/valid-term? state params)
             (not (:voted-for state))
             (log/prev-log-term-equals? state params))}]
@@ -23,7 +21,7 @@
               (assoc state :voted-for (:candidate-id params))
               state)}))
 
-;;; TODO: refactor this shit show
+;;; TODO: refactor this
 (defn- append-entries [state params]
   (let [r {:term (:current-term state)
            :count (count (:entries params))

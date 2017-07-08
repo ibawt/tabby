@@ -2,6 +2,7 @@
   (:require [tabby.utils :as utils]
             [tabby.log :as log]
             [tabby.client-state :as cs]
+            [tabby.state-store :as store]
             [tabby.leader :as l]
             [tabby.follower :as f]
             [clojure.tools.logging :refer [warn info]]
@@ -88,7 +89,8 @@
       (update :election-timeout - dt)
       (utils/if-not-leader? f/check-election-timeout)
       (utils/if-leader? l/check-backlog dt)
-      (utils/if-leader? cs/check-clients)))
+      (utils/if-leader? cs/check-clients)
+      (store/save)))
 
 (defn set-peers [state peers]
   (assoc state :peers peers))
@@ -101,16 +103,15 @@
                   :value (first (vals kv))
                   :op :set}))
 
-(defn create-server [id]
-  {:current-term 0
-   :log [{:term 0 :cmd {:op :reset}}]
-   :id id
-   :tx-queue '()
-   :rx-queue '()
-   :commit-index 0
-   :last-applied 0
-   :type :follower
-   :election-timeout (utils/random-election-timeout nil)
-   :peers {}
-   :clients {}
-   :db {}})
+(defn create-server [options]
+  (merge {:current-term 0
+          :log [{:term 0 :cmd {:op :reset}}]
+          :tx-queue '()
+          :rx-queue '()
+          :commit-index 0
+          :last-applied 0
+          :type :follower
+          :election-timeout (utils/random-election-timeout nil)
+          :peers {}
+          :clients {}
+          :db {}} options))
