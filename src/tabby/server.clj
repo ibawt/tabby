@@ -8,8 +8,7 @@
             [clojure.tools.logging :refer [warn info]]
             [tabby.candidate :as c]))
 
-;;; Utility Functions
-(defn packet-count
+ (defn packet-count
   "returns the number of packets
    in the rx and tx queue"
   [state]
@@ -66,7 +65,7 @@
         :get cs/add-read
         :set handle-set
         :cas cs/add-cas) state p)
-      (redirect-to-leader state p))
+       (redirect-to-leader state p))
     (-> (check-term state p)
         ((condp = (:type p)
            :request-vote f/handle-request-vote

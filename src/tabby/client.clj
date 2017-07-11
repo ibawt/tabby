@@ -60,7 +60,7 @@
                (> times (or (:max-tries c) 10)) [ (close-socket c) :timeout]
                (not (connected? c)) (d/recur (connect-to-leader c) (inc times))
                :else (d/let-flow [_ (s/put! (:socket c) pkt)
-                                  msg (s/take! (:socket c) ::none)]
+                                msg (s/take! (:socket c) ::none)]
                        (if-not (= :redirect (:type msg))
                          [c (:body msg)]
                          (d/recur (if (:hostname msg)
@@ -99,4 +99,4 @@
                       :uuid (utils/gen-uuid)})))
 
 (defn make-local-client [servers]
-  (set-random-leader (map->LocalClient {:servers servers :timeout 5000})))
+  (set-random-leader (map->NetworkClient {:servers servers :timeout 5000})))

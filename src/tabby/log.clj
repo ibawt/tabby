@@ -5,8 +5,6 @@
 (defn last-log-index
   "return the index of the last log entry (1 based)"
   [state]
-  ;; since the log starts with a 'reset' entry
-  ;; the count is actually one based
   (count (:log state)))
 
 (defn get-log-at

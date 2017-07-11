@@ -25,12 +25,6 @@
 
 (def ^:private stream-closed? (complement stream-open?))
 
-(defmacro only-if [v c & body]
-  `(if ~c
-     (do
-       ~@body)
-     ~v))
-
 (defn- wrap-duplex-stream
   "wrap the stream in the protocol"
   [protocol s]
@@ -69,7 +63,6 @@
   [state socket handshake]
   (info (:id @state) " accepting peer connection from: " (:src handshake))
   (swap! state assoc-in [:peers (:src handshake) :socket] socket)
-
   (when (= :leader (:type @state))
     (swap! state l/broadcast-heartbeat)
     (transmit! state))
@@ -149,10 +142,9 @@
                      (warn ex "[" (:id @state) "] caught exception in reconnect-to-peer")))))))
 
 (defn- send-peer-packet
-  "sends a packet to the appropriate peer socket, will reconnect"
+  "sends a packet to the appropriate peer socket"
   [state p]
-  (let [peer-id (:dst p)
-        socket (get-in state [:peers peer-id :socket])]
+  (if-let [socket (get-in state [:peers (:dst p) :socket])]
     (if (stream-open? socket)
       (s/put! socket p)
       false)))
