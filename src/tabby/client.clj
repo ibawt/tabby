@@ -6,67 +6,89 @@
             [tabby.utils :as utils]
             [clojure.tools.logging :refer [info warn]]))
 
-(defn- close-socket [client]
-  (if (:socket client)
-    (do (s/close! (:socket client))
-        (assoc client :socket nil))
-    client))
+(defn- close-socket
+  "closes the socket if it's open and clears it"
+  [client]
+  (update client :socket
+          (fn [s]
+            (when s
+              (s/close! s)
+              nil))))
 
-(defn set-leader [this host port]
+(defn set-leader
+  "sets the current leader to 'host':'port'"
+  [this host port]
   (-> (close-socket this)
       (assoc :leader {:host (or (:host-override this) host) :port port})))
 
-(defn- set-next-leader [client]
-  (let [s (:servers client)
-        n (concat (rest s) (list (first s)))]
-    (-> (assoc client :leader (first n))
-        (assoc :servers n))))
+(defn- set-random-leader
+  "picks a random leader"
+  [client]
+  (assoc client :leader (first (shuffle (:servers client)))))
 
 (defn- connect-to-leader
+  "connects to the leader, and sends handshake.
+   returns a deferred"
   [client]
   (d/catch
-      (d/let-flow [socket (net/client (or (:host-override client) (get-in client [:leader :host]))
-                                      (get-in client [:leader :port]))]
-        (s/put! socket {:type :client-handshake})
-        (assoc client :socket socket))
-      (fn [e]
-        (warn e "caught exception in connect")
-        (set-next-leader client))))
+      (d/chain (net/client (or (:host-override client) (get-in client [:leader :host]))
+                           (get-in client [:leader :port]))
+               (fn [x]
+                 (s/put! x {:type :client-handshake})
+                 (assoc client :socket x)))
 
-(defn- connected? [{socket :socket}]
+      (fn [e]
+        (set-random-leader client))))
+
+(defn- connected?
+  "is the connection open?"
+  [{socket :socket}]
   (and socket ((complement s/closed?) socket)))
 
 (defn- send-pkt
+  "sends the packet, will return a deferred"
   [client pkt]
-  (d/loop [c client, times 0]
-    (d/let-flow [c c]
-      (manifold.time/in
-       (* 100 times)
-       (fn []
-         (cond
-           (> times 10) [c :dead]
-           (not (connected? c)) (d/recur (connect-to-leader c) (inc times))
-           :else (d/let-flow [_ (s/put! (:socket c) pkt)
-                              msg (s/take! (:socket c) ::none)]
-                   (if-not (= :redirect (:type msg))
-                     [c (:body msg)]
-                     (d/recur (set-leader c (:hostname msg) (:port msg))
-                              (inc times))))))))))
+  (let [start-time (System/currentTimeMillis)]
+    (d/loop [c client, times 0]
+      (if (> (- (System/currentTimeMillis) start-time) (:timeout client))
+        [(close-socket @c) :timeout]
+        (d/let-flow [c c]
+          (manifold.time/in
+           (* 100 (* times times)) ;; back off
+           (fn []
+             (cond
+               (> times (or (:max-tries c) 10)) [ (close-socket c) :timeout]
+               (not (connected? c)) (d/recur (connect-to-leader c) (inc times))
+               :else (d/let-flow [_ (s/put! (:socket c) pkt)
+                                msg (s/take! (:socket c) ::none)]
+                       (if-not (= :redirect (:type msg))
+                         [c (:body msg)]
+                         (d/recur (if (:hostname msg)
+                                    (set-leader (close-socket c) (:hostname msg) (:port msg))
+                                    (set-random-leader (close-socket c)))
+                                  (inc times))))))))))))
+
+(defn success? [value]
+  (= :ok (:value value)))
 
 (defprotocol Client
-  (close [this])
-  (get-value [this key])
-  (compare-and-swap [this key new old])
-  (set-or-create [this key value]))
+  "A set of functions each client must implement."
+  (close [this]
+    "Close the socket, returns this")
+  (get-value [this key]
+    "gets the specified value, returns a [this {:value v}] response
+     [this :timeout] if the value exceeds the timeout")
+  (compare-and-swap [this key new old]
+    "sets the key to 'new' if the value is 'old', returns
+     [this {:value :ok}] if successful, and [this {:value :fail}] if not")
+  (set-or-create [this key value]
+    "sets the key to value, returns [this {:value :ok}] if successfull"))
 
-(defrecord LocalClient
-    [servers socket leader host-override]
+(defrecord NetworkClient
+    [servers socket leader host-override timeout max-tries]
   Client
   (close [this]
-    (when (and socket (not (s/closed? socket)))
-      (s/close! socket))
-    (assoc this :socket nil))
-
+    (close-socket this))
   (get-value [this key]
     (send-pkt this {:type :get :key key :uuid (utils/gen-uuid)}))
   (compare-and-swap [this key new old]
@@ -77,4 +99,4 @@
                       :uuid (utils/gen-uuid)})))
 
 (defn make-local-client [servers]
-  (map->LocalClient {:servers servers :leader (first servers)}))
+  (set-random-leader (map->NetworkClient {:servers servers :timeout 5000})))

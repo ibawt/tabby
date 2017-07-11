@@ -15,10 +15,12 @@
 
 (defn- broadcast-request-vote [state]
   (u/foreach-peer state
-                (fn [s [p v]]
+                (fn [s [p _]]
                   (u/transmit s (make-request-vote-pkt s p)))))
 
-(defn become-candidate [state]
+(defn become-candidate
+  "becomes a candidate"
+  [state]
   (info (:id state) " becoming candidate")
   (-> (assoc state :type :candidate)
       (assoc :voted-for (:id state))

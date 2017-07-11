@@ -17,7 +17,7 @@
   (into {}
         (map
          (fn [x]
-           (let [[_ host port id] (re-matches #"(.*):(\d+)=(\d+)" x)]
+           (let [[_ host port id] (re-matches #"(.*):(\d+)=(.*)" x)]
              [id {:hostname host :port (Integer/parseInt port)}]))
          (.split s ","))))
 
@@ -33,12 +33,22 @@
    ["-P" "--peers PEERLIST" "list of peers in form x.y.z:<port>=ID,..."
     :parse-fn parse-peers]
    ["-t" "--timeout" "event loop timeout"
-    :default 50
+    :default 10
     :parse-fn #(Integer/parseInt %)
     :validate-fn [pos?]]
    ["-d" "--data-dir DIR" "data directory"
     :validate-fn dir-exists?]
    ["-h" "--help" "show summary"]])
+
+(defn filter-options
+  "remove myself from the peer list"
+  [options]
+  (update options :peers
+          (fn [x]
+            (into {}
+                  (filter (fn [[ k  v]]
+                            (not= k (:id options)))
+                          x)))))
 
 (defn- parse-args [args]
   (let [{:keys [options errors summary] } (cli/parse-opts args cli-options)]
@@ -49,7 +59,7 @@
 
 (defn -main [& args]
   (try
-    (let [options (parse-args args)]
+    (let [options (filter-options (parse-args args))]
       (info "options: " options)
       (let [server (-> (server/create-server options)
                        (#(if (:data-dir %)
