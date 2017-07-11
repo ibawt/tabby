@@ -4,4 +4,10 @@ lein uberjar
 
 docker build -t tabby .
 
+rm -rf build/tabby
+mkdir -p build/tabby/data
+
+cp target/tabby-0.1.0-SNAPSHOT-standalone.jar build/tabby
+tar -C build -cvzf tabby.tar.gz tabby
+
 rm -rf target

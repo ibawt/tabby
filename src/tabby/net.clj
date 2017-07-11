@@ -151,14 +151,11 @@
 (defn- send-peer-packet
   "sends a packet to the appropriate peer socket, will reconnect"
   [state p]
-  ;;; TODO: refactor
   (let [peer-id (:dst p)
         socket (get-in state [:peers peer-id :socket])]
     (if (stream-open? socket)
       (s/put! socket p)
-      (do
-        ;; (warn (:id state) " failed sending pkt to: " (:dst p) " : pkt: " p)
-        false))))
+      false)))
 
 
 (defn- send-client-packet
