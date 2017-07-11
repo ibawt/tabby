@@ -57,13 +57,15 @@
            (* 100 (* times times)) ;; back off
            (fn []
              (cond
-               (> times (or (:max-tries c) 10)) [ (close-socket c) :timeout]
+               (> times (or (:max-tries c) 25)) [(close-socket c) :timeout]
                (not (connected? c)) (d/recur (connect-to-leader c) (inc times))
-               :else (d/let-flow [_ (s/put! (:socket c) pkt)
-                                msg (s/take! (:socket c) ::none)]
-                       (if-not (= :redirect (:type msg))
-                         [c (:body msg)]
-                         (d/recur (if (:hostname msg)
+               :else
+               (d/let-flow [_ (s/try-put! (:socket c) pkt (:timeout client))
+                            msg (s/try-take! (:socket c) ::none (:timeout client) ::timeout)]
+                 (cond
+                   (= ::timeout msg) [c :timeout]
+                   (not= :redirect (:type msg)) [c (:body msg)]
+                   :else (d/recur (if (:hostname msg)
                                     (set-leader (close-socket c) (:hostname msg) (:port msg))
                                     (set-random-leader (close-socket c)))
                                   (inc times))))))))))))
@@ -98,5 +100,5 @@
     (send-pkt this {:type :set :value value :key key
                       :uuid (utils/gen-uuid)})))
 
-(defn make-local-client [servers]
+(defn make-network-client [servers]
   (set-random-leader (map->NetworkClient {:servers servers :timeout 5000})))

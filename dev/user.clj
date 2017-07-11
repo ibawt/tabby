@@ -16,13 +16,13 @@
   (cluster-maker))
 
 (defn- local-client []
-  (client/make-local-client [{:host "127.0.0.1" :port 8090}
-                             {:host "127.0.0.1" :port 8091}
-                             {:host "127.0.0.1" :port 8092}]))
+  (client/make-network-client [{:host "127.0.0.1" :port 8090}
+                            {:host "127.0.0.1" :port 8091}
+                            {:host "127.0.0.1" :port 8092}]))
 
 (defn- remote-client []
   (assoc (client/make-local-client [{:host "192.168.64.23" :port 31620}
-                              {:host "192.168.64.23" :port 32227}
+                                {:host "192.168.64.23" :port 32227}
                                     {:host "192.168.64.23" :port 30865}])
         :host-override "192.168.64.23"))
 
