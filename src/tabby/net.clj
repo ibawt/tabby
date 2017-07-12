@@ -96,8 +96,7 @@
   "Returns a function that will handle the handshake for incoming connections."
   [state]
   (fn [s info]
-    (d/let-flow
-     [handshake (s/take! s)]
+    (d/let-flow [handshake (s/take! s 100)]
      (-> ((condp = (:type handshake)
             :peering-handshake connect-peer-socket!
             :table-tennis connect-table-tennis-socket
@@ -117,7 +116,7 @@
   (if (stream-open? (:socket peer))
     [id peer]
     (-> (d/let-flow [socket (client (:hostname peer) (:port peer))
-                     _ (s/put! socket {:src (:id state) :type :peering-handshake})]
+                     _ (s/try-put! socket {:src (:id state) :type :peering-handshake} 100)]
           (s/connect socket (:rx-stream state) {:downstream? false})
           [id (assoc peer :socket socket)])
         (d/catch (fn [ex]
@@ -156,7 +155,7 @@
     (if (stream-closed? socket)
       (dissoc-in state [:clients client] :socket)
       (do
-        (s/put! socket (dissoc p :client-dst))
+        (s/try-put! socket (dissoc p :client-dst) 100)
         state))))
 
 (defn- send-pkt
@@ -222,8 +221,10 @@
 (defn start-server!
   "Starts the server listening."
   [server port]
-  (swap! server assoc :election-timeout (utils/random-election-timeout @server))
-  (swap! server (fn [x] (f/become-follower x nil)))
+  (swap! server
+         (fn [s]
+           (-> (assoc s :election-timeout (utils/random-election-timeout s))
+               (f/become-follower nil))))
   (tcp/start-server
    (fn [s info]
      ((connection-handler server) (wrap-duplex-stream protocol s) info))
