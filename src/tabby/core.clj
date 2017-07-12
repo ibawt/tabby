@@ -13,7 +13,7 @@
 (defn- parse-peers
   "parses a list of form x.y.z:323=1,y.a.b:32=2
    into a map like {1 {:hostname x.y.z :port 323}}"
-  [s]
+  [^String s]
   (into {}
         (map
          (fn [x]
@@ -21,7 +21,7 @@
              [id {:hostname host :port (Integer/parseInt port)}]))
          (.split s ","))))
 
-(defn- dir-exists? [dir]
+(defn- dir-exists? [^String dir]
   (.isDirectory (File. dir)))
 
 (def ^:private cli-options

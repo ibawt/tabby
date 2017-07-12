@@ -107,7 +107,7 @@
               (s/close! s)))
           state s handshake)
          (d/catch (fn [ex]
-                    (warn ex "Caught exception in connection-handler: " (.getMessage ex))
+                    (warn ex "Caught exception in connection-handler")
                     (s/close! s)))))))
 
 (defn connect-to-peer
@@ -121,7 +121,7 @@
           (s/connect socket (:rx-stream state) {:downstream? false})
           [id (assoc peer :socket socket)])
         (d/catch (fn [ex]
-                   (warn (:id state) "caught exception in connecting to: " id " :" (.getMessage ex)))))))
+                   (warn (:id state) "caught exception in connecting to: " id))))))
 
 (defmacro dissoc-in [s ks k]
   `(update-in ~s [~@ks] dissoc ~k))
@@ -130,16 +130,14 @@
   (assert peer-id)
   (when-not (get-in @state [:peers peer-id :connect-pending])
     (swap! state assoc-in [:peers peer-id :connect-pending] true)
-    (d/future
-      (-> (d/chain
-           (connect-to-peer @state [peer-id (get-in @state [:peers peer-id])])
-           (fn [[peer-id peer-value]]
-             (when peer-id
-               (swap! state assoc-in [:peers peer-id] (dissoc peer-value :connect-pending)))))
-          (d/catch (fn [ex]
-                     (swap! state update-in [:peers peer-id] dissoc :connect-pending)
-                     (warn (:id @state) "exception is: " (.getMessage ex))
-                     (warn ex "[" (:id @state) "] caught exception in reconnect-to-peer")))))))
+    (-> (d/chain
+         (connect-to-peer @state [peer-id (get-in @state [:peers peer-id])])
+         (fn [[peer-id peer-value]]
+           (when peer-id
+             (swap! state assoc-in [:peers peer-id] (dissoc peer-value :connect-pending)))))
+        (d/catch (fn [ex]
+                   (swap! state update-in [:peers peer-id] dissoc :connect-pending)
+                   (warn ex "[" (:id @state) "] caught exception in reconnect-to-peer"))))))
 
 (defn- send-peer-packet
   "sends a packet to the appropriate peer socket"
@@ -209,7 +207,7 @@
         (warn (:id @state) " stream closed! exiting")
         :exit)
       (-> (d/chain (s/try-take! (:rx-stream @state) ::none
-                                (or timeout default-timeout) ::timeout)
+                              (or timeout default-timeout) ::timeout)
                    (fn [msg]
                      (when (condp = msg
                              ::none false
@@ -217,7 +215,7 @@
                              (handle-rx-pkt! state (delta-t t) msg))
                        (d/recur (current-time)))))
           (d/catch (fn [ex]
-                     (warn ex (:id @state) ": caught exception in event loop: " (.getMessage ex))
+                     (warn ex (:id @state) ": caught exception in event loop")
                      (s/close! (:rx-stream @state))))))))
 
 
@@ -229,9 +227,9 @@
   (tcp/start-server
    (fn [s info]
      ((connection-handler server) (wrap-duplex-stream protocol s) info))
-   {:port port}))
+    {:port port :epoll? true}))
 
-(def ^:private rx-buffer-size 5) ; no data for this random choice
+(def ^:private rx-buffer-size 16) ; no data for this random choice
 
 (defn create-server
   "Creates a network instance of the server."

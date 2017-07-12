@@ -14,7 +14,7 @@
   (if (and (:data-dir state) (> (:last-applied state) (or (:last-saved-index state) 0)))
    (with-open [w (io/output-stream (log-file state))]
      (info (:id state) " writing log to disk")
-     (.write w (nippy/freeze (serialize-state state)))
+     (.write w ^bytes (nippy/freeze (serialize-state state)))
      (assoc state :last-saved-index (:last-applied state)))
    state))
 
