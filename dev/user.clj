@@ -65,15 +65,20 @@
     (str x ".localnet:" x)))
 
 (defn kill
-  "not done yet"
-  [n]
-  (alter-var-root #'cluster cluster/kill-server (to-name n)))
+  [& args]
+  (alter-var-root #'cluster
+                  (fn [c]
+                    (reduce (fn [c i]
+                              (cluster/kill-server c (to-name i)))
+                            c args))))
 
 (defn rez
   "not done yet"
-  [n]
-  (alter-var-root #'cluster cluster/rez-server (to-name n)))
-
+  [& args]
+  (alter-var-root #'cluster
+                  (fn [c]
+                    (reduce #(cluster/rez-server %1 (to-name %2))
+                            c args))))
 (defn reset []
   (try
     (stop)
@@ -84,18 +89,18 @@
       (warn e "caught exception in reset!!!"))))
 
 (defn set-value [key value]
-  (let [[kk {code :value}] @(client/set-or-create klient key value)]
+  (let [[kk value] (client/set-or-create klient key value)]
     (when kk
       (alter-var-root #'klient (constantly kk)))
-    code))
+    value))
 
 (defn get-value [key]
-  (let [[kk {value :value}] @(client/get-value klient key)]
+  (let [[kk value] (client/get-value klient key)]
     (alter-var-root #'klient (constantly kk))
     value))
 
 (defn compare-and-swap [key new old]
-  (let [[kk {value :value}] @(client/compare-and-swap klient key new old)]
+  (let [[kk {value :value}] (utils/dbg (client/compare-and-swap klient key new old))]
     (alter-var-root #'klient (constantly kk))
     value))
 
