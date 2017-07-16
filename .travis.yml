@@ -1,5 +1,5 @@
-sudo: required
-services:
-- docker
+language: clojure
+jdk:
+  - oraclejdk8
 script:
 - script/test
