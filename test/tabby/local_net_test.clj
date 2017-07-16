@@ -12,6 +12,7 @@
 (defn test-cluster []
   (-> (create-network-cluster 50 9495)
       (cluster/init-cluster 3)
+      (update :servers utils/mapf assoc :data-dir nil)
       (assoc-in [:servers "0.localnet:0" :election-timeout] 0)
       (assoc-in [:servers "1.localnet:1" :election-timeout-fn]
                 (constantly 150))
