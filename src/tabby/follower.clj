@@ -40,7 +40,7 @@
         (utils/transmit {:dst (:src p)
                          :src (:id state)
                          :type :request-vote-reply
-                         :body {:current-term (:current-term state)
+                         :body {:term (:current-term state)
                                  :vote-granted? vote-granted?}}))))
 
 (defn check-election-timeout
