@@ -105,12 +105,12 @@
     value))
 
 (defn server-at [key]
-  (unatom (get (:servers cluster) key)))
+  (unatom (get (:servers cluster) (to-name key))))
 
 (defn types []
   (map (fn [x]
          (-> (unatom x)
-             (select-keys [:type :id]))) (vals (:servers cluster))))
+             (select-keys [:type :id :stopped :db :current-term :commit-index]))) (vals (:servers cluster))))
 
 (defn logs []
   (map (fn [x]

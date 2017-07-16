@@ -60,7 +60,9 @@
   (let [match-index (get-in state [:match-index peer])
         last-log-index (log/last-log-index state)]
     (utils/transmit state (if (> last-log-index match-index)
-                            (make-append-log-pkt state peer)
+                            (do
+                              ;; (info "sending append log to peer" peer)
+                              (make-append-log-pkt state peer))
                             (make-heart-beat-pkt state peer)))))
 
 (defn- broadcast-heart-beat [state]
@@ -70,15 +72,15 @@
                                       (peer-next-timeout state)))))
 
 (defn- update-match-and-next [state p]
-  (let [s (if-not (:success (:body p))
-            (update-in state [:next-index (:src p)] dec)
-            (assoc-in state [:match-index (:src p)]
-                      (get-in state [:next-index (:src p)])))]
-    (update-in s [:next-index (:src p)]
-               (fn [next-index]
-                 (if (< next-index (inc (count (:log s))))
-                   (inc next-index)
-                   next-index)))))
+  (if-not (get-in p [:body :success])
+    (update-in state [:next-index (:src p)]  #(if (> % 1) (dec %) %))
+    (-> (assoc-in state [:match-index (:src p)]
+                  (get-in state [:next-index (:src p)]))
+        (update-in [:next-index (:src p)]
+                   (fn [next-index]
+                     (if (< next-index (inc (count (:log state))))
+                       (inc next-index)
+                       next-index))))))
 
 (defn- match-sort
   "Sorting function for a collection of [index freq] pairs.
@@ -131,9 +133,10 @@
   "broadcast peer updates by checking against
   an internal throttle"
   [state dt]
-  (utils/foreach-peer (apply-peer-timeouts state dt)
-                (fn [s [p v]]
-                  (if (peer-timeout? s p)
-                    (-> (send-peer-update s [p])
-                        (update-peer-timeout p))
-                    s))))
+  (-> (apply-peer-timeouts state dt)
+      (utils/foreach-peer
+       (fn [s [p v]]
+         (if (peer-timeout? s p)
+           (-> (send-peer-update s [p])
+               (update-peer-timeout p))
+           s)))))

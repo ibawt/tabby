@@ -31,7 +31,11 @@
                      (log/prev-log-term-equals? state params))}]
     {:state (if (:success r)
               (log/append-log state params)
-              state)
+              (update state :log (fn [x]
+                                   (if (and (not= (:prev-log-index params) (inc (count (:log state))))
+                                            (not (empty? x)))
+                                     (pop x)
+                                     x))))
      :result r}))
 
 (defn handle-request-vote
@@ -64,12 +68,9 @@
 (defn become-follower
   "called from the packet queue if current-term < supplied term"
   [state leader-id]
-  (info (:id state) " becoming follower, leader-id: " leader-id)
-  (-> state
-      (cs/close-clients)
-      (dissoc :next-timeout)
-      (dissoc :voted-for)
-      (dissoc :match-index)
-      (assoc :election-timeout (utils/random-election-timeout state))
-      (assoc :leader-id leader-id)
-      (assoc :type :follower)))
+  (info (:id state) "becoming follower, leader-id" leader-id)
+  (-> (cs/close-clients state)
+      (dissoc :next-timeout :voted-for :match-index)
+      (assoc :election-timeout (utils/random-election-timeout state)
+             :leader-id leader-id
+             :type :follower)))

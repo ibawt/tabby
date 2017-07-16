@@ -69,10 +69,12 @@
     (warn "Killing server: " id)
     (update-in this [:servers id] (fn [x]
                                     (swap! x net/stop-server)
+                                    (swap! x assoc :stopped true)
                                     x)))
   (rez-server [this id]
     (warn "Rezing server: " id)
     (update-in this [:servers id] (fn [x]
+                                    (swap! x assoc :stopped false)
                                     (swap! x store/restore)
                                     (connect (start-server x) (:timeout this))
                                     x)))
