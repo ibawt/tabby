@@ -15,7 +15,9 @@
   :main tabby.core
   :repl-options {:init-ns user}
   :profiles {:uberjar {:aot :all}
-             :dev {:dependencies [[jepsen "0.1.6-SNAPSHOT"]
-                                [org.clojure/tools.namespace "0.2.11"]]
+             :dev {:plugins [[lein-cloverage "1.0.9"]]
+                   :dependencies [[jepsen "0.1.6-SNAPSHOT"]
+                                  [org.clojure/tools.namespace "0.2.11"]]
                    :source-paths ["dev"]}
-             :test {:dependencies [[jepsen "0.1.6-SNAPSHOT"]]}})
+             :test {:dependencies [[jepsen "0.1.6-SNAPSHOT"]
+                                   [lein-cloverage "1.0.9"]]}})
