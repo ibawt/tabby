@@ -26,18 +26,16 @@
          (cluster/stop-cluster ~(first bindings))))))
 
 (defmacro with-client [bindings & body]
-  (let [last-binding (get bindings (- (count bindings) 2))
-        klient (or (first last-binding) last-binding)]
-    `(let [~@bindings]
-       (try
-         ~@body
-         (finally
-           (client/close ~klient))))))
+  `(let [~@bindings]
+     (try
+      ~@body
+      (finally
+        (client/close! ~(first bindings))))))
 
 (defn create-client []
   (client/make-network-client [{:host "127.0.0.1" :port 9495}
-                            {:host "127.0.0.1" :port 9496}
-                            {:host "127.0.0.1" :port 9496}]))
+                               {:host "127.0.0.1" :port 9496}
+                               {:host "127.0.0.1" :port 9497}]))
 
 (defn- unatom [x]
   (if (instance? clojure.lang.Atom x)
@@ -55,7 +53,7 @@
     (loop []
       (cond
         (find-leader c) true
-        (> (- (System/currentTimeMillis) t0) 30000) false
+        (> (- (System/currentTimeMillis) t0) 30000) (throw (RuntimeException. "can't find a leader"))
         :else (do
                 (Thread/yield)
                 (recur))))))
@@ -70,47 +68,27 @@
   (testing "start and write a value and get it back"
     (with-cluster [c (cluster/start-cluster (test-cluster))]
       (wait-for-a-leader c)
-      (let [resp @(d/chain
-                    (create-client)
-                    (fn [klient]
-                      (client/set-or-create klient :a "a"))
-                    (fn [[klient resp]]
-                      (is (= :ok (:value resp)))
-                      (client/get-value klient :a))
-                    (fn [[klient resp]]
-                      resp))]
-        (is (= {:value "a"} resp)))))
+      (with-client [c (create-client)]
+        (is (client/success? (client/set-value! c :a "a")))
+        (is (= "a" (:value (client/get-value! c :a)))))))
 
   (testing "compare and swap"
     (with-cluster [c (cluster/start-cluster (test-cluster))]
       (wait-for-a-leader c)
-      (with-client [[k v] (utils/thr (create-client)
-                               (client/set-or-create :a "a")
-                               (client/compare-and-swap :a "b" "a")
-                               (client/get-value :a)
-                               (client/compare-and-swap :a "c" "a"))]
-        (is (= {:value :ok} (first v)))
-        (is (= {:value :ok} (second v)))
-        (is (= {:value "b"} (nth v 2)))
-        (is (= {:value :invalid-value} (nth v 3)))))))
-
-(defn- simple-client-request []
-  @(-> (d/chain
-        (create-client)
-        (fn [k]
-          (client/set-or-create k :a "a"))
-        (fn [[k r]]
-          (client/close k)
-          (:value r)))
-       (d/catch (fn [ex]
-                  ex))))
+      (with-client [c (create-client)]
+        (is (client/success? (client/set-value! c :a "a")))
+        (is (client/success? (client/compare-and-swap! c :a "b" "a")))
+        (is (= "b" (:value (client/get-value! c :a))))
+        (is (= :invalid-value (:value (client/compare-and-swap! c :a "c" "a"))))))))
 
 ;; fix this when we can make it less janky
 (deftest simple-failures
   (testing "leaders goes down"
     (with-cluster [c (cluster/start-cluster (test-cluster))]
-      (wait-for-a-leader c)
-      (let [{leader :id} (find-leader c)]
-        (cluster/kill-server c leader)
-        (is (= :ok (simple-client-request)))
-        (is (find-leader c))))))
+      (is (wait-for-a-leader c))
+      (with-client [k (create-client)]
+        (let [{leader :id} (find-leader c)]
+          (cluster/kill-server c leader)
+          (is (wait-for-a-leader c))
+          (is (client/success? (client/set-value! k :a "a")))
+          (is (find-leader c)))))))

@@ -17,8 +17,8 @@
 
 (defn- local-client []
   (client/make-network-client [{:host "127.0.0.1" :port 8090}
-                            {:host "127.0.0.1" :port 8091}
-                            {:host "127.0.0.1" :port 8092}]))
+                               {:host "127.0.0.1" :port 8091}
+                               {:host "127.0.0.1" :port 8092}]))
 
 (defn- remote-client []
   (assoc (client/make-network-client [{:host "192.168.64.23" :port 31620}
@@ -89,20 +89,13 @@
       (warn e "caught exception in reset!!!"))))
 
 (defn set-value [key value]
-  (let [[kk value] (client/set-or-create klient key value)]
-    (when kk
-      (alter-var-root #'klient (constantly kk)))
-    value))
+  (client/set-value! klient key value))
 
 (defn get-value [key]
-  (let [[kk value] (client/get-value klient key)]
-    (alter-var-root #'klient (constantly kk))
-    value))
+  (client/get-value! klient key))
 
 (defn compare-and-swap [key new old]
-  (let [[kk {value :value}] (utils/dbg (client/compare-and-swap klient key new old))]
-    (alter-var-root #'klient (constantly kk))
-    value))
+  (client/compare-and-swap! klient key new old))
 
 (defn server-at [key]
   (unatom (get (:servers cluster) (to-name key))))
