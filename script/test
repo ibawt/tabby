@@ -2,9 +2,7 @@
 
 set -e
 
+docker run -it --rm -v "$PWD":/usr/src/app -w /usr/src/app clojure bash -c 'lein test && lein cloverage -o cov --coveralls'
+
 COVERALLS_URL="https://coveralls.io/api/v1/jobs"
-docker run -it --rm -v "$PWD":/usr/src/app -w /usr/src/app clojure lein test
-
-docker run -it --rm -v "$PWD":/usr/src/app -w /usr/src/app clojure lein cloverage --coveralls
-
-curl -F 'json_file=@coveralls.json' "$COVERALLS_URL"
+curl -F 'json_file=@cov/coveralls.json' "$COVERALLS_URL"
