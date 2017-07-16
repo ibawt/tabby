@@ -8,8 +8,6 @@
             [clojure.tools.logging :refer [warn info]]
             [tabby.candidate :as c]))
 
-(def ^:dynamic *server-id* nil)
-
  (defn packet-count
   "returns the number of packets
    in the rx and tx queue"

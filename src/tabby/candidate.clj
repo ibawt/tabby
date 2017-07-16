@@ -2,7 +2,8 @@
   (:require [tabby.utils :as u]
             [tabby.leader :as l]
             [tabby.log :as log]
-            [clojure.tools.logging :refer [warn info]]))
+            [clojure.tools.logging :refer [warn info]]
+            [tabby.client-state :as cs]))
 
 (defn- make-request-vote-pkt [state peer]
   {:dst peer
@@ -22,12 +23,12 @@
   "becomes a candidate"
   [state]
   (info (:id state) " becoming candidate")
-  (-> (assoc state :type :candidate)
-      (assoc :voted-for (:id state))
+  (-> (assoc state :type :candidate
+             :election-timeout (u/random-election-timeout state)
+             :votes {(:id state) true}
+             :voted-for (:id state))
       (dissoc :leader-id)
       (update :current-term inc)
-      (assoc :election-timeout (u/random-election-timeout state))
-      (assoc :votes {(:id state) true})
       (broadcast-request-vote)))
 
 (defn handle-request-vote-response

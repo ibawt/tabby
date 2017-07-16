@@ -8,19 +8,6 @@
 (defn- election-timeout? [state]
   (<= (:election-timeout state) 0))
 
-(defn- request-vote [state params]
-  ;; TODO: refactor this
-  (let [r {:term (:current-term state)
-           :vote-granted?
-           (and
-            (utils/valid-term? state params)
-            (not (:voted-for state))
-            (log/prev-log-term-equals? state params))}]
-    {:response r
-     :state (if (:vote-granted? r)
-              (assoc state :voted-for (:candidate-id params))
-              state)}))
-
 ;;; TODO: refactor this
 (defn- append-entries [state params]
   (let [r {:term (:current-term state)
@@ -41,11 +28,20 @@
 (defn handle-request-vote
   "incoming request to for a vote packet"
   [state p]
-  (let [{s :state r :response} (request-vote state (:body p))]
-    (utils/transmit s {:dst (:src p)
-                       :src (:id state)
-                       :type :request-vote-reply
-                       :body r})))
+  (let [params (:body p)
+        vote-granted? (and
+                       (utils/valid-term? state params)
+                       (not (:voted-for state))
+                       (log/prev-log-term-equals? state params))]
+
+    (-> (if vote-granted?
+          (assoc state :voted-for (:candidate-id params))
+          state)
+        (utils/transmit {:dst (:src p)
+                         :src (:id state)
+                         :type :request-vote-reply
+                         :body {:current-term (:current-term state)
+                                 :vote-granted? vote-granted?}}))))
 
 (defn check-election-timeout
   "checks if we have timed out on the election,
@@ -70,7 +66,7 @@
   [state leader-id]
   (info (:id state) "becoming follower, leader-id" leader-id)
   (-> (cs/close-clients state)
-      (dissoc :next-timeout :voted-for :match-index)
+      (dissoc :next-timeout :voted-for :match-index :clients)
       (assoc :election-timeout (utils/random-election-timeout state)
              :leader-id leader-id
              :type :follower)))

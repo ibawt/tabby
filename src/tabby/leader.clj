@@ -60,9 +60,7 @@
   (let [match-index (get-in state [:match-index peer])
         last-log-index (log/last-log-index state)]
     (utils/transmit state (if (> last-log-index match-index)
-                            (do
-                              ;; (info "sending append log to peer" peer)
-                              (make-append-log-pkt state peer))
+                            (make-append-log-pkt state peer)
                             (make-heart-beat-pkt state peer)))))
 
 (defn- broadcast-heart-beat [state]

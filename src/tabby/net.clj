@@ -173,9 +173,9 @@
   [state]
   (let [pkts (:tx-queue @state)]
     (swap! state assoc :tx-queue '())
-    (doseq [p pkts]
-      (when-not (send-pkt @state p)
-        (reconnect-to-peer! state (:dst p) p)))))
+    (d/future (doseq [p pkts]
+       (when-not (send-pkt @state p)
+         (reconnect-to-peer! state (:dst p) p))))))
 
 (defn- handle-rx-pkt!
   "appends the pkt and runs update"
@@ -197,26 +197,25 @@
 (defn event-loop
   "Runs the event loop for a server instance.  Returns a deferred."
   [state timeout]
-  (binding [server/*server-id* (:id @state)]
-   (d/loop [t (current-time)]
-     (when-not (empty? (:tx-queue @state))
-       (transmit! state))
+  (d/loop [t (current-time)]
+    (when-not (empty? (:tx-queue @state))
+      (transmit! state))
 
-     (if-not (stream-open? (:rx-stream @state))
-       (do
-         (warn (:id @state) " stream closed! exiting")
-         :exit)
-       (-> (d/chain (s/try-take! (:rx-stream @state) ::none
-                                 (or timeout default-timeout) ::timeout)
-                    (fn [msg]
-                      (when (condp = msg
-                              ::none false
-                              ::timeout (handle-timeout! state (delta-t t))
-                              (handle-rx-pkt! state (delta-t t) msg))
-                        (d/recur (current-time)))))
-           (d/catch (fn [ex]
-                      (warn ex (:id @state) ": caught exception in event loop")
-                      (s/close! (:rx-stream @state)))))))))
+    (if-not (stream-open? (:rx-stream @state))
+      (do
+        (warn (:id @state) " stream closed! exiting")
+        :exit)
+      (-> (d/chain (s/try-take! (:rx-stream @state) ::none
+                                (or timeout default-timeout) ::timeout)
+                   (fn [msg]
+                     (when (condp = msg
+                             ::none false
+                             ::timeout (handle-timeout! state (delta-t t))
+                             (handle-rx-pkt! state (delta-t t) msg))
+                       (d/recur (current-time)))))
+          (d/catch (fn [ex]
+                     (warn ex (:id @state) ": caught exception in event loop")
+                     (s/close! (:rx-stream @state))))))))
 
 
 (defn start-server!
