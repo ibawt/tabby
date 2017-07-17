@@ -76,8 +76,8 @@
 (defn success? [value]
   (= :ok (:value value)))
 
-(defn make-network-client [servers]
-  (atom (set-next-leader {:servers servers :timeout 15000})))
+(defn make-network-client [servers & {:keys [timeout] :or {timeout 15000}}]
+  (atom (set-next-leader {:servers servers :timeout timeout})))
 
 
 (defn get-value! [this key]

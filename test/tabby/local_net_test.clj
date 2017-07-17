@@ -33,10 +33,11 @@
       (finally
         (client/close! ~(first bindings))))))
 
-(defn create-client []
+(defn create-client [& {:keys [timeout] :or {timeout 15000}}]
   (client/make-network-client [{:host "127.0.0.1" :port 9495}
                                {:host "127.0.0.1" :port 9496}
-                               {:host "127.0.0.1" :port 9497}]))
+                               {:host "127.0.0.1" :port 9497}]
+                              :timeout timeout))
 
 (defn- unatom [x]
   (if (instance? clojure.lang.Atom x)
@@ -82,14 +83,24 @@
         (is (= "b" (:value (client/get-value! c :a))))
         (is (= :invalid-value (:value (client/compare-and-swap! c :a "c" "a"))))))))
 
-;; fix this when we can make it less janky
+(defmacro with-dead-server [c id & body]
+  `(try
+     (cluster/kill-server ~c ~id)
+     ~@body
+     (finally
+       (cluster/rez-server ~c ~id))))
+
 (deftest simple-failures
   (testing "leaders goes down"
     (with-cluster [c (cluster/start-cluster (test-cluster))]
       (is (wait-for-a-leader c))
-      (with-client [k (create-client)]
-        (let [{leader :id} (find-leader c)]
-          (cluster/kill-server c leader)
+      (with-client [k (create-client :timeout 1000)]
+        (with-dead-server c (:id (find-leader c))
+            (is (wait-for-a-leader c))
+            (is (client/success? (client/set-value! k :a "a")))
+          (with-dead-server c (:id (find-leader c))
+            (is (= :timeout (client/set-value! k :b 1))))
           (is (wait-for-a-leader c))
-          (is (client/success? (client/set-value! k :a "a")))
-          (is (find-leader c)))))))
+          (is (client/success? (client/set-value! k :c 2))))
+        (Thread/sleep 100)
+        (is (= (map (fn [x] (:log @x)) (:servers c))))))))
