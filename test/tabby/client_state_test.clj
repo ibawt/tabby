@@ -42,9 +42,7 @@
                            :pending-write {}}}}]
       (is (= {:peers [0 1 2]
               :clients {:a {:pending-read {}
-                            :pending-write {}
-                            ;:history {:0 {:key :foo :value "foo"}}
-                            }}
+                            :pending-write {}}}
               :db {:foo "foo"}
               :tx-queue '({:client-dst :a
                            :uuid :0
@@ -52,13 +50,9 @@
   (testing "multiple clients"
     (is (= {:peers [0 1 2]
             :db {:foo "foo"}
-            :clients {:a {
-                          ;:history {:0 {:hb-count #{1,2} :key :foo :value "foo"}}
-                          :pending-read {}
+            :clients {:a {:pending-read {}
                           :pending-write {}}
-                      :b {
-                         ; :history {:0 {:hb-count #{1,2} :key :foo :value "foo"}}
-                          :pending-read {}
+                      :b {:pending-read {}
                           :pending-write {}}}
             :tx-queue '({:client-dst :b :uuid :0 :body {:value "foo"}}
                         {:client-dst :a :uuid :0 :body {:value "foo"}})}

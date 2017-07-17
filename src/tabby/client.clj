@@ -26,8 +26,9 @@
   (let [s (:servers client)
         n (concat (rest s) (list (first s)))]
     (info "client picking new leader" (first n))
-    (-> (assoc client :leader (first n))
-        (assoc :servers n))))
+    (assoc client
+           :leader (first n)
+           :servers n)))
 
 (defn- connect-to-leader
   "connects to the leader, and sends handshake.

@@ -13,7 +13,7 @@
 (defn save [state]
   (if (and (:data-dir state) (> (:last-applied state) (or (:last-saved-index state) 0)))
    (with-open [w (io/output-stream (log-file state))]
-     (info (:id state) " writing log to disk")
+     (info (:id state) "writing log to disk:" (:last-applied state))
      (.write w ^bytes (nippy/freeze (serialize-state state)))
      (assoc state :last-saved-index (:last-applied state)))
    state))
@@ -22,10 +22,10 @@
   (loop [s state]
     (if (>= (:last-applied state) (count (:log s)))
       (do
-        (info (:id state) " applied log up to: " (:last-applied s))
+        (info (:id state) "applied log up to:" (:last-applied s))
         s)
       (recur (-> (update s :db #(log/apply-entry s %))
-                (update :last-applied inc))))))
+                 (update :last-applied inc))))))
 
 (defn restore [state]
   (let [file (io/file (log-file state))]
@@ -33,5 +33,5 @@
       (replay-log
        (merge state (nippy/thaw-from-file file)))
       (do
-        (warn (:id state) " log not found")
+        (warn (:id state) "log not found")
         state))))
