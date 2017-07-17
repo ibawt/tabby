@@ -1,6 +1,5 @@
 language: clojure
 jdk:
   - oraclejdk8
-  - openjdk8
 script:
 - script/test
