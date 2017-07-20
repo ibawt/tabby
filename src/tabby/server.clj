@@ -42,6 +42,7 @@
   (utils/transmit state {:client-dst (:client-id p)
                          :type :redirect
                          :hostname (get-in state [:peers (:leader-id state) :hostname])
+                         :http-port (:http-port state)
                          :port (get-in state [:peers (:leader-id state) :port])
                          :leader-id (:leader-id state)}))
 

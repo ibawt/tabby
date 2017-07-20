@@ -14,7 +14,13 @@
     <level value="warn"/>
   </logger>
   <logger name="org.apache.http">
-    <level value="warn"/>
+    <level value="debug"/>
+  </logger>
+  <logger name="org.apache.http.wire">
+    <level value="debug"/>
+  </logger>
+  <logger name="org.apache.http.headers">
+    <level value="debug"/>
   </logger>
   <root>
     <priority value ="debug" />

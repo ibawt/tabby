@@ -96,7 +96,7 @@
   "Returns a function that will handle the handshake for incoming connections."
   [state]
   (fn [s info]
-    (d/let-flow [handshake (s/take! s 100)]
+    (d/let-flow [handshake (s/try-take! s 1000)]
      (-> ((condp = (:type handshake)
             :peering-handshake connect-peer-socket!
             :table-tennis connect-table-tennis-socket

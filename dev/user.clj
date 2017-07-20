@@ -16,9 +16,9 @@
   (cluster-maker))
 
 (defn- local-client []
-  (client/make-network-client [{:host "127.0.0.1" :port 8090}
-                               {:host "127.0.0.1" :port 8091}
-                               {:host "127.0.0.1" :port 8092}]))
+  (client/make-http-client [{:host "127.0.0.1" :port 8090 :http-port 9090}
+                            {:host "127.0.0.1" :port 8091 :http-port 9091}
+                            {:host "127.0.0.1" :port 8092 :http-port 9092}]))
 
 (defn- remote-client []
   (assoc (client/make-network-client [{:host "192.168.64.23" :port 31620}

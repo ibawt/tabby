@@ -2,6 +2,7 @@
   (:require [clojure.tools.logging :refer [warn info]]
             [manifold.deferred :as d]
             [manifold.stream :as s]
+            [tabby.http-server :as http]
             [tabby.state-store :as store]
             [tabby.cluster :as cluster]
             [tabby.net :as net]
@@ -28,14 +29,18 @@
 (defn- start
   [state]
   (-> (cluster/foreach-server state start-server)
+      (cluster/foreach-server http/start!)
       (cluster/foreach-server (fn [s]
                                 (connect s (:timeout state))))))
+
 
 
 (defn- stop [state]
   (cluster/foreach-server state (fn [server]
                                   (if (instance? clojure.lang.Atom server)
-                                    (swap! server net/stop-server)
+                                    (do
+                                      (http/stop! server)
+                                      (swap! server net/stop-server))
                                     server))))
 
 (defn- step [state dt]
@@ -44,7 +49,8 @@
 (defn- assign-ports [servers base-port]
   (into {} (map-indexed (fn [i [key server]]
                           [key (-> server
-                                   (assoc :port (+ i base-port))
+                                   (assoc :port (+ i base-port)
+                                          :http-port (+ i 9090))
                                    (assoc :hostname (str i ":" (+ i base-port))))]) servers)))
 
 (defn- get-data-dir []
@@ -69,12 +75,10 @@
     (warn "Killing server: " id)
     (update-in this [:servers id] (fn [x]
                                     (swap! x net/stop-server)
-                                    (swap! x assoc :stopped true)
                                     x)))
   (rez-server [this id]
     (warn "Rezing server: " id)
     (update-in this [:servers id] (fn [x]
-                                    (swap! x assoc :stopped false)
                                     (swap! x store/restore)
                                     (connect (start-server x) (:timeout this))
                                     x)))
