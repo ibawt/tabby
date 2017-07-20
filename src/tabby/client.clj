@@ -73,7 +73,7 @@
                 (= ::timeout msg) [c :timeout]
                 (not= :redirect (:type msg)) [c (:body msg)]
                 :else (recur (if (:hostname msg)
-                               (set-leader (close-socket c) (:hostname msg) {:port (:port msg)})
+                               (set-leader (close-socket c) (:hostname msg) :port (:port msg))
                                (set-next-leader (close-socket c)))
                              (inc times))))))))))
 
@@ -91,24 +91,24 @@
   Client
 
   (set-value! [this key value]
-    (let [[c v] (send-pkt-sync @this {:type :set :key key :value value
+    (let [[c v] (send-pkt-sync @client {:type :set :key key :value value
                                       :uuid (utils/gen-uuid)})]
-      (reset! this c)
+      (reset! client c)
       v))
 
   (get-value! [this key]
-    (let [[c v] (send-pkt-sync @this {:type :get :key key :uuid (utils/gen-uuid)})]
-      (reset! this c)
+    (let [[c v] (send-pkt-sync @client {:type :get :key key :uuid (utils/gen-uuid)})]
+      (reset! client c)
       v))
 
   (compare-and-swap! [this key new old]
-    (let [[c v] (send-pkt-sync @this {:type :cas :body {:key key :new new :old old}
+    (let [[c v] (send-pkt-sync @client {:type :cas :body {:key key :new new :old old}
                                       :uuid (utils/gen-uuid)})]
-      (reset! this c)
+      (reset! client c)
       v))
 
   (close! [this]
-    (swap! this close-socket)))
+    (reset! client close-socket)))
 
 
 (defn make-network-client [servers & {:keys [timeout] :or {timeout 15000}}]

@@ -43,10 +43,8 @@
 (defn start! [state]
   (let [s (-> (compojure/routes
                (GET "/keys/:key" req
-                    (info "GET" req)
                     (do-request state {:type :get :key (get-in req [:params :key])}))
                (POST "/keys/:key" req
-                     (info "SET" req)
                      (do-request state {:type :set :key (get-in req [:params "key"])
                                         :value (get-in req [:params "value"])}))
                (POST "/keys/:key/cas" [key])
@@ -57,7 +55,6 @@
                      :headers {"Content-Type" "application/json"}
                      :body (json/generate-string
                                         (select-keys @state [:leader-id :type :commit-index :current-term :id]))})
-               (GET "/metrics" [])
                (route/not-found "not found"))
               (wrap-json-response)
               (params/wrap-params)
