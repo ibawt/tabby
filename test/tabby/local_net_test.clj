@@ -10,7 +10,7 @@
 
 
 (defn test-cluster []
-  (-> (create-network-cluster 50 9495)
+  (-> (create-network-cluster 20 9495)
       (cluster/init-cluster 3)
       (update :servers utils/mapf assoc :data-dir nil)
       (assoc-in [:servers "0.localnet:0" :election-timeout] 0)
@@ -38,6 +38,12 @@
                                {:host "127.0.0.1" :port 9496}
                                {:host "127.0.0.1" :port 9497}]
                               :timeout timeout))
+
+(defn create-http-client [& {:keys [timeout] :or {timeout 15000}}]
+  (client/make-http-client [{:host "127.0.0.1" :http-port 10495}
+                            {:host "127.0.0.1" :http-port 10496}
+                            {:host "127.0.0.1" :http-port 10497}]
+                              :timeout timeout) )
 
 (defn- unatom [x]
   (if (instance? clojure.lang.Atom x)
@@ -92,15 +98,16 @@
 
 (deftest simple-failures
   (testing "leaders goes down"
-    (with-cluster [c (cluster/start-cluster (test-cluster))]
-      (is (wait-for-a-leader c))
-      (with-client [k (create-client :timeout 1000)]
-        (with-dead-server c (:id (find-leader c))
+    (doseq [client [(create-http-client :timeout 1000)
+                    (create-client :timeout 1000)]]
+      (with-cluster [c (cluster/start-cluster (test-cluster))]
+        (is (wait-for-a-leader c))
+        (with-client [k client]
+          (with-dead-server c (:id (find-leader c))
             (is (wait-for-a-leader c))
             (is (client/success? (client/set-value! k :a "a")))
-          (with-dead-server c (:id (find-leader c))
-            (is (= :timeout (client/set-value! k :b 1))))
-          (is (wait-for-a-leader c))
-          (is (client/success? (client/set-value! k :c 2))))
-        (Thread/sleep 100)
-        (is (= (map (fn [x] (:log @x)) (:servers c))))))))
+            (with-dead-server c (:id (find-leader c))
+              (is (= :timeout (client/set-value! k :b 1))))
+            (is (wait-for-a-leader c))
+            (is (client/success? (client/set-value! k :c 2))))
+          (is (= (map (fn [x] (:log @x)) (:servers c)))))))))

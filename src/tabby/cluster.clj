@@ -12,7 +12,7 @@
 
 (defn- find-peers [id servers]
   (into {} (map (fn [[k v]]
-                  [k (select-keys v [:hostname :port])]) (filterv (fn [[k v]] (not= k id)) servers))))
+                  [k (select-keys v [:hostname :port :http-port])]) (filterv (fn [[k v]] (not= k id)) servers))))
 
 (defn- set-peers [servers]
   (utils/mapf servers (fn [v]
@@ -132,7 +132,8 @@
 (defn create [baseport num]
   (let [servers (reduce #(merge %1 {(str %2 ".localnet:" %2)
                                     (merge (server/create-server {:id (str %2 ".localnet:" %2)})
-                                           {:hostname "localhost" :port (+ baseport %2)})}) {} (range num))]
+                                           {:hostname "localhost" :port (+ baseport %2)
+                                            :http-port (+ baseport 1000 %2)})}) {} (range num))]
     (->NoNetworkCluster (set-peers servers) 0)))
 
 (defn create-no-network-cluster [num]

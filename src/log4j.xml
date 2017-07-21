@@ -8,12 +8,18 @@
     </layout>
   </appender>
   <logger name="io.netty">
-    <level value="fatal"/>
+    <level value="warn"/>
   </logger>
   <logger name="com.mchange">
     <level value="warn"/>
   </logger>
   <logger name="org.apache.http">
+    <level value="warn"/>
+  </logger>
+  <logger name="org.apache.http.wire">
+    <level value="warn"/>
+  </logger>
+  <logger name="org.apache.http.headers">
     <level value="warn"/>
   </logger>
   <root>
