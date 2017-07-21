@@ -70,5 +70,6 @@
   state)
 
 (defn stop! [state]
-  (.close ^java.io.Closeable (:http-server @state))
+  (when (:http-server @state)
+      (.close ^java.io.Closeable (:http-server @state)))
   (swap! state dissoc :http-server))

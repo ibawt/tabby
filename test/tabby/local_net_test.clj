@@ -98,17 +98,16 @@
 
 (deftest simple-failures
   (testing "leaders goes down"
-    (with-cluster [c (cluster/start-cluster (test-cluster))]
-      (info "cluster is" c)
-      (is (wait-for-a-leader c))
-      (doseq [client [(create-http-client :timeout 1000) ]]
+    (doseq [client [(create-http-client :timeout 1000)
+                    (create-client :timeout 1000)]]
+      (with-cluster [c (cluster/start-cluster (test-cluster))]
+        (is (wait-for-a-leader c))
         (with-client [k client]
-         (with-dead-server c (:id (find-leader c))
-           (is (wait-for-a-leader c))
-           (is (client/success? (client/set-value! k :a "a")))
-           (with-dead-server c (:id (find-leader c))
-             (is (= :timeout (client/set-value! k :b 1))))
-           (is (wait-for-a-leader c))
-           (is (client/success? (client/set-value! k :c 2))))
-         (Thread/sleep 100)
-         (is (= (map (fn [x] (:log @x)) (:servers c)))))))))
+          (with-dead-server c (:id (find-leader c))
+            (is (wait-for-a-leader c))
+            (is (client/success? (client/set-value! k :a "a")))
+            (with-dead-server c (:id (find-leader c))
+              (is (= :timeout (client/set-value! k :b 1))))
+            (is (wait-for-a-leader c))
+            (is (client/success? (client/set-value! k :c 2))))
+          (is (= (map (fn [x] (:log @x)) (:servers c)))))))))

@@ -78,9 +78,8 @@
                              (inc times))))))))))
 
 (defn success? [value]
-  (let [r (= (name :ok) (:value value))]
-    (info "r = " r)
-    r))
+  (or (= (name :ok) (:value value))
+      (= :ok (:value value))))
 
 (defprotocol Client
   (set-value! [this key value])
@@ -135,7 +134,6 @@
      (if (>= (- (System/currentTimeMillis) start-time) (:timeout @client))
        :timeout
        (let [x (try
-                 (info "http-url" (http-url @client path))
                  (let [resp (func (http-url @client path)
                                   (merge req
                                              {:as :json
@@ -144,7 +142,6 @@
                                               :accept :json
                                               :socket-timeout 500
                                               :conn-timeout 500}))]
-                   (info "response is" resp)
                    (condp = (:status resp)
                      200 (get-in resp [:body])
                      302 (do
@@ -185,7 +182,7 @@
                 {:form-params {:key (key-xform key) :new new :old old}}))
 
   (close! [this]
-    (swap! this close-socket)))
+    (swap! client close-socket)))
 
 
 (defn make-http-client [servers & {:keys [timeout] :or {timeout 15000}}]
