@@ -18,12 +18,14 @@
         request-id (utils/gen-uuid)
         rx-stream (s/stream)]
     (swap! state update :clients cs/create-client client-id rx-stream)
+    (info "do-request" pkt)
     (-> (d/chain
          (s/try-put! (:rx-stream @state) (assoc pkt :client-id client-id
                                                 :uuid request-id) 1000)
           (fn [_]
             (s/try-take! rx-stream ::none 10000 ::timeout))
           (fn [msg]
+            (info "msg" msg)
             (s/close! rx-stream)
             (swap! state update :clients dissoc client-id)
             (cond
@@ -47,7 +49,11 @@
                (POST "/keys/:key" req
                      (do-request state {:type :set :key (get-in req [:params "key"])
                                         :value (get-in req [:params "value"])}))
-               (POST "/keys/:key/cas" [key])
+               (POST "/keys/:key/cas" req
+                     (do-request state {:type :cas
+                                        :body {:key (get-in req [:params "key"])
+                                               :new (get-in req [:params "new"])
+                                               :old (get-in req [:params "old"])}}))
                (GET "/ping" []
                     {:status 200 :body ":PONG"})
                (GET "/status" []

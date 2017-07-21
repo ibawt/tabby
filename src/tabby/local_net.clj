@@ -50,7 +50,7 @@
   (into {} (map-indexed (fn [i [key server]]
                           [key (-> server
                                    (assoc :port (+ i base-port)
-                                          :http-port (+ i 9090))
+                                          :http-port (+ i base-port 1000))
                                    (assoc :hostname (str i ":" (+ i base-port))))]) servers)))
 
 (defn- get-data-dir []

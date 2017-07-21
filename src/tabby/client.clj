@@ -78,7 +78,9 @@
                              (inc times))))))))))
 
 (defn success? [value]
-  (= :ok (:value value)))
+  (let [r (= (name :ok) (:value value))]
+    (info "r = " r)
+    r))
 
 (defprotocol Client
   (set-value! [this key value])
@@ -114,10 +116,6 @@
 (defn make-network-client [servers & {:keys [timeout] :or {timeout 15000}}]
   (->TcpClient (atom (set-next-leader {:servers servers :timeout timeout}))))
 
-(defn- http-url [this]
-  (str "http://" (get-in this [:leader :host])
-       ":" (get-in this [:leader :http-port])))
-
 (defn- key-xform [x]
   (.replaceAll (.toLowerCase (str x)) " " "-"))
 
@@ -125,69 +123,66 @@
   (let [url (java.net.URL. x)]
     [(.getHost url) (.getPort url)]))
 
-(defmacro with-retries [x & body]
-  `(loop [times 0]
-    (try
-      ~@body
-      (catch ex
-          (if (>= times ~x)
-            (throw ex)
-            (recur (inc times)))))))
+(defn- http-url [this key]
+  (str "http://" (get-in this [:leader :host])
+       ":" (get-in this [:leader :http-port])
+       "/keys/" key))
+
+(defn- do-request [client path func req]
+  (let [start-time (System/currentTimeMillis)]
+   (loop [times 0]
+     (Thread/sleep (* 100 (* times times)))
+     (if (>= (- (System/currentTimeMillis) start-time) (:timeout @client))
+       :timeout
+       (let [x (try
+                 (info "http-url" (http-url @client path))
+                 (let [resp (func (http-url @client path)
+                                  (merge req
+                                             {:as :json
+                                              :throw-exceptions false
+                                              :content-type :json
+                                              :accept :json
+                                              :socket-timeout 500
+                                              :conn-timeout 500}))]
+                   (info "response is" resp)
+                   (condp = (:status resp)
+                     200 (get-in resp [:body])
+                     302 (do
+                           (swap! client (fn [x]
+                                           (let [[host port] (parse-url (get (:headers resp) "Location"))]
+                                             (if (and (not= "" host) (> port 0))
+                                               (set-leader x host port)
+                                               (set-next-leader x)))))
+                           ::retry)
+                     404 :not-found
+                     :else
+                     ::retry))
+                 (catch Exception e
+                   (warn "exception" (.getMessage e))
+                   (swap! client set-next-leader)
+                   ::retry))]
+         (if (= x ::retry)
+           (recur (inc times))
+           x))))))
+
 
 (defrecord HttpClient
     [client]
   Client
   (set-value! [this key value]
-    (let [pkt {:type :set :key (key-xform key) :value value
-               :uuid (utils/gen-uuid)}
-          r (http/post (str (http-url @client) "/keys/" (key-xform key))
-                       {:form-params {:key (key-xform key) :value value}
-                        :throw-exceptions false
-                        :socket-timeout (:timeout @client) :conn-timeout (:timeout @client)
-                        :as :json
-                        :content-type :json
-                        :accept :json})]
-      (condp = (:status r)
-        302 (do
-              (swap! client (fn [x]
-                              (let [[host port] (parse-url (get (:headers r) "Location"))]
-                                (set-leader x host :http-port port))))
-              (set-value! this key value))
-        200 (:value (:body r))
-        404 :not-found
-        :else
-        (throw (java.lang.Exception. (str "error: " (:status r)))))))
+      (do-request client (key-xform key)
+                  http/post
+                  {:form-params {:key (key-xform key) :value value}}))
 
   (get-value! [this key]
-    (let [r (http/get (str (http-url @client) "/keys/" (key-xform key))
-                    {:query-params {:key key}
-                     :as :json
-                     :socket-timeout (:timeout @client) :conn-timeout (:timeout @client)
-                     :accept :json}) ]
-      (condp = (:status r)
-        200 (:value (:body r))
-        404 :not-found
-        :else
-        (throw (java.lang.Exception. (str "error: " (:status r)))))))
+    (do-request client (key-xform key)
+                http/get
+                {:query-params {:key (key-xform key)}}))
 
   (compare-and-swap! [this key new old]
-    (let [r (http/post (str (http-url @client) "/keys/" (key-xform key) "/cas")
-                       {:form-params {:key (key-xform key) :new new :old old}
-                        :throw-exceptions false
-                        :socket-timeout (:timeout @client) :conn-timeout (:timeout @client)
-                        :as :json
-                        :content-type :json
-                        :accept :json})]
-      (condp = (:status r)
-        302 (do
-              (swap! client (fn [x]
-                              (let [[host port] (parse-url (get (:headers r) "Location"))]
-                                (set-leader x host port))))
-              (compare-and-swap! this key new old))
-        200 (:value (:body r))
-        404 :not-found
-        :else
-        (throw (java.lang.Exception. (str "error: " (:status r)))))))
+    (do-request client (str (key-xform key) "/cas")
+                http/post
+                {:form-params {:key (key-xform key) :new new :old old}}))
 
   (close! [this]
     (swap! this close-socket)))

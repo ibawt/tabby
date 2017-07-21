@@ -22,9 +22,9 @@
 
 (defn- remote-client []
   (assoc (client/make-network-client [{:host "192.168.64.23" :port 31620}
-                                {:host "192.168.64.23" :port 32227}
-                                    {:host "192.168.64.23" :port 30865}])
-        :host-override "192.168.64.23"))
+                                      {:host "192.168.64.23" :port 32227}
+                                      {:host "192.168.64.23" :port 30865}])
+         :host-override "192.168.64.23"))
 
 (def klient (local-client))
 
