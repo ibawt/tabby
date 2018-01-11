@@ -92,6 +92,7 @@
 (defmacro with-dead-server [c id & body]
   `(try
      (cluster/kill-server ~c ~id)
+     (Thread/sleep 100)
      ~@body
      (finally
        (cluster/rez-server ~c ~id))))
