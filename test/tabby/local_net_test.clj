@@ -92,15 +92,14 @@
 (defmacro with-dead-server [c id & body]
   `(try
      (cluster/kill-server ~c ~id)
-     (Thread/sleep 100)
      ~@body
      (finally
        (cluster/rez-server ~c ~id))))
 
 (deftest simple-failures
   (testing "leaders goes down"
-    (doseq [client [(create-http-client :timeout 1000)
-                    (create-client :timeout 1000)]]
+    (doseq [client [(create-http-client :timeout 5000)
+                    (create-client :timeout 5000)]]
       (with-cluster [c (cluster/start-cluster (test-cluster))]
         (is (wait-for-a-leader c))
         (with-client [k client]

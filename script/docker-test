@@ -1,0 +1,5 @@
+#!/bin/sh
+
+set -e
+
+docker run --rm -v "$PWD:/usr/src/myapp" -w /usr/src/myapp clojure lein test $@ 
