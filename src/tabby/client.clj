@@ -53,29 +53,32 @@
   [{socket :socket}]
   (and socket ((complement s/closed?) socket)))
 
+(def default-max-tries 25)
+
 (defn- send-pkt-sync
   [client pkt]
   (let [start-time (System/currentTimeMillis)]
-    (loop [c client, times 0]
+    @(d/loop [c client, times 0]
       (if (> (- (System/currentTimeMillis) start-time) (:timeout client))
         [(close-socket c) :timeout]
         (do
           (when (pos? times)
             (Thread/sleep (* 10 (* times times))))
           (cond
-            (> times (or (:max-tries c) 25)) [(close-socket c) :timeout]
-            (not (connected? c)) (recur @(connect-to-leader c) (inc times))
+            (> times (or (:max-tries c) default-max-tries)) [(close-socket c) :timeout]
+            (not (connected? c)) (d/recur @(connect-to-leader c) (inc times))
             :else
-            (let [_ @(s/try-put! (:socket c) pkt (:timeout client))
-                  msg @(s/try-take! (:socket c) ::none (:timeout client) ::timeout)]
-              (cond
-                (= ::none msg) (recur (set-next-leader (close-socket c)) (inc times))
-                (= ::timeout msg) [c :timeout]
-                (not= :redirect (:type msg)) [c (:body msg)]
-                :else (recur (if (:hostname msg)
-                               (set-leader (close-socket c) (:hostname msg) :port (:port msg))
-                               (set-next-leader (close-socket c)))
-                             (inc times))))))))))
+            (d/chain (s/try-put! (:socket c) pkt (:timeout client))
+                     (fn [_] (s/try-take! (:socket c) ::none (:timeout client) ::timeout))
+                     (fn [msg]
+                       (cond
+                         (= ::none msg) (d/recur (set-next-leader (close-socket c)) (inc times))
+                         (= ::timeout msg) [c :timeout]
+                         (not= :redirect (:type msg)) [c (:body msg)]
+                         :else (d/recur (if (:hostname msg)
+                                          (set-leader (close-socket c) (:hostname msg) :port (:port msg))
+                                          (set-next-leader (close-socket c)))
+                                      (inc times)))))))))))
 
 (defn success? [value]
   (or (= (name :ok) (:value value))
@@ -140,8 +143,8 @@
                                               :throw-exceptions false
                                               :content-type :json
                                               :accept :json
-                                              :socket-timeout 500
-                                              :conn-timeout 500}))]
+                                              :socket-timeout (:timeout @client)
+                                              :conn-timeout (:timeout @client)}))]
                    (condp = (:status resp)
                      200 (get-in resp [:body])
                      302 (do

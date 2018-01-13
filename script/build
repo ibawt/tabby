@@ -1,8 +1,8 @@
 #!/bin/sh
 
-lein uberjar
+set -e
 
-docker build -t tabby .
+lein uberjar
 
 rm -rf build/tabby
 mkdir -p build/tabby/data

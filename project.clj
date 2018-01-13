@@ -1,5 +1,5 @@
 (defproject tabby "0.1.0-SNAPSHOT"
-  :description "A raft implementation"
+  :description "A raft backed key value store"
   :url "https://github.com/ibawt/tabby"
   :license {:name "Eclipse Public License"
             :url "http://www.eclipse.org/legal/epl-v10.html"}
@@ -18,8 +18,12 @@
                                               com.sun.jmx/jmxri]]]
   :main tabby.core
   :repl-options {:init-ns user}
+  :aliases {"jepsen" ["run" "-m" "jepsen.tabby"]}
   :profiles {:uberjar {:aot :all}
-             :dev {:plugins [[lein-cloverage "1.0.9"]]
-                   :dependencies [[org.clojure/tools.namespace "0.2.11"]]
-                   :source-paths ["dev"]}
-             :test {:dependencies [[lein-cloverage "1.0.10"]]}})
+             :dev {:plugins [[lein-cloverage "1.0.10"]]
+                   :dependencies [[org.clojure/tools.namespace "0.2.11"]
+                                  [jepsen "0.1.7-SNAPSHOT"]]
+                   :source-paths ["dev" "jepsen"]}
+             :test {:dependencies [[lein-cloverage "1.0.10"]
+                                   [jepsen "0.1.7-SNAPSHOT"]]
+                    :source-paths ["jepsen"]}})
