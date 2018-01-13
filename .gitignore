@@ -10,3 +10,7 @@ pom.xml.asc
 /.vagrant/
 /tmp
 /tabby.tar.gz
+/jepsen/.DS_Store
+/jepsen/docker/secret
+/cov
+/store

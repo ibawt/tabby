@@ -6,6 +6,7 @@
             [tabby.state-store :as store]
             [tabby.net :as net]
             [tabby.server :as server]
+            [tabby.http-server :as http]
             [tabby.utils :as u])
   (:import [java.io File])
   (:gen-class))
@@ -65,7 +66,8 @@
                        (#(if (:data-dir %)
                            (store/restore %)
                            %))
-                       (net/create-server (:port options)))]
+                       (net/create-server (:port options))
+                       (http/start!))]
 
         (swap! server assoc :event-loop (net/event-loop server (:timeout options)))
         @(:event-loop @server)))

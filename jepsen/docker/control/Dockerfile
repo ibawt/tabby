@@ -24,8 +24,8 @@ RUN wget https://raw.githubusercontent.com/technomancy/leiningen/stable/bin/lein
     lein self-install
 
 # You need to locate jepsen in this directory (up.sh does that automatically)
-ADD jepsen /jepsen
-RUN cd /jepsen/jepsen && lein install
+# ADD jepsen /jepsen
+# RUN cd /jepsen/jepsen && lein install
 
 ADD ./bashrc /root/.bashrc
 ADD ./init.sh /init.sh

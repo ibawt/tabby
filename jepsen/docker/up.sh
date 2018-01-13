@@ -62,12 +62,12 @@ else
 fi
 
 # Dockerfile does not allow `ADD ..`. So we need to copy that.
-INFO "Copying .. to control/jepsen"
-(
-    rm -rf ./control/jepsen
-    mkdir ./control/jepsen
-    (cd ..; tar --exclude=./docker -cf - .)  | tar Cxf ./control/jepsen -
-)
+# INFO "Copying .. to control/jepsen"
+# (
+#     rm -rf ./control/jepsen
+#     mkdir ./control/jepsen
+#     (cd ..; tar --exclude=./docker -cf - .)  | tar Cxf ./control/jepsen -
+# )
 
 
 if [ "$INIT_ONLY" ]; then
